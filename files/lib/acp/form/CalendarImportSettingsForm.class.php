@@ -58,9 +58,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 $sql = "SELECT * FROM wcf".WCF_N."_event_listener WHERE packageID = ?";
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute([$this->debugInfo['package']['packageID']]);
-                while ($row = $statement->fetchArray()) {
-                    $this->debugInfo['eventListeners'][] = $row;
-                }
+                while ($row = $statement->fetchArray()) $this->debugInfo['eventListeners'][] = $row;
             } catch (\Exception $e) {}
         }
         
@@ -81,17 +79,13 @@ class CalendarImportSettingsForm extends AbstractForm {
         }
         
         $eventClasses = ['calendar\\page\\EventPage', 'calendar\\page\\CalendarPage', 'calendar\\data\\event\\EventAction', 'calendar\\data\\event\\date\\EventDateAction'];
-        foreach ($eventClasses as $class) {
-            $this->debugInfo['eventClasses'][$class] = class_exists($class);
-        }
+        foreach ($eventClasses as $class) $this->debugInfo['eventClasses'][$class] = class_exists($class);
         
         try {
             $sql = "SELECT package, packageVersion FROM wcf".WCF_N."_package WHERE package LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute(['%calendar%']);
-            while ($row = $statement->fetchArray()) {
-                $this->debugInfo['calendarPackages'][] = $row;
-            }
+            while ($row = $statement->fetchArray()) $this->debugInfo['calendarPackages'][] = $row;
         } catch (\Exception $e) {}
     }
     
