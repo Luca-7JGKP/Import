@@ -29,7 +29,10 @@ jobs:
       - name: Create plugin package
         run: |
           mkdir -p dist
-          cp package.xml dist/
+          cp package.xml dist/ || {
+            echo 'Error: package.xml not found!'
+            exit 1
+          }
           [ -f "files.tar" ] && cp files.tar dist/
           [ -f "acptemplates.tar" ] && cp acptemplates.tar dist/
           [ -f "eventListener.xml" ] && cp eventListener.xml dist/
@@ -39,7 +42,7 @@ jobs:
 
           if [ -d "language" ]; then
             mkdir -p dist/language
-            cp language/*.xml dist/language/
+            cp language/*.xml dist/language/ 2>/dev/null || true
           fi
 
           cd dist
@@ -57,3 +60,4 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: com.lucaberwind.wcf.calendar.import.tar
+          token: ${{ secrets.GITHUB_TOKEN }}
