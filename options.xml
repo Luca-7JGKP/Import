@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/2019/option.xsd">
+    <import>
+        <options>
+            <option name="calendar_import_target_import_id">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>0</defaultvalue>
+            </option>
+            <option name="calendar_import_default_board_id">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>0</defaultvalue>
+            </option>
+            <option name="calendar_import_create_threads">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+            </option>
+            <option name="calendar_import_convert_timezone">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+            </option>
+            <option name="calendar_import_auto_mark_past_events_read">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+            </option>
+            <option name="calendar_import_mark_updated_as_unread">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+            </option>
+            <option name="calendar_import_max_events">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>100</defaultvalue>
+                <minvalue>1</minvalue>
+                <maxvalue>10000</maxvalue>
+            </option>
+            <option name="calendar_import_log_level">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>select</optiontype>
+                <defaultvalue>info</defaultvalue>
+                <selectoptions>error:wcf.acp.calendar.import.logLevel.error
+warning:wcf.acp.calendar.import.logLevel.warning
+info:wcf.acp.calendar.import.logLevel.info
+debug:wcf.acp.calendar.import.logLevel.debug</selectoptions>
+            </option>
+        </options>
+    </import>
+</data>
