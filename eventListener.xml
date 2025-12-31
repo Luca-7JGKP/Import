@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/6.0/eventListener.xsd">
     <import>
-        <!-- Event-Listener für Kalender-Event-Seite (Gelesen-Markierung) - WoltLab Kalender 6.x -->
+        <!-- Event-Listener für Kalender-Event-Seite (Gelesen-Markierung) -->
         <eventlistener name="calendarEventPageView">
             <eventclassname>calendar\page\EventPage</eventclassname>
             <eventname>readData</eventname>
@@ -12,7 +12,7 @@
         </eventlistener>
         
         <!-- Event-Listener für Kalender-Übersichtsseite -->
-        <eventlistener name="calendarEventListPageView">
+        <eventlistener name="calendarPageView">
             <eventclassname>calendar\page\CalendarPage</eventclassname>
             <eventname>readData</eventname>
             <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
