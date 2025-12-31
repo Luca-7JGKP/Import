@@ -1,193 +1,227 @@
 <?php
+
 namespace wcf\acp\form;
 
+use wcf\data\package\PackageCache;
 use wcf\form\AbstractForm;
+use wcf\system\event\EventHandler;
+use wcf\system\option\OptionHandler;
 use wcf\system\WCF;
-use wcf\util\StringUtil;
 
 /**
- * Shows the calendar tracking settings form.
- * 
- * @author  Luca Berwind
- * @package com.lucaberwind.wcf.calendar.import
- * @version 1.3.1
+ * Form for calendar import settings with debug information collection.
+ *
+ * @author      Luca-7JGKP
+ * @copyright   2025
+ * @license     GNU Lesser General Public License <http://opensource.org/licenses/lgpl-license.php>
  */
 class CalendarImportSettingsForm extends AbstractForm {
     /**
      * @inheritDoc
      */
-    public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
-    
+    public $activeMenuItem = 'wcf.acp.menu.link.calendar.import.settings';
+
     /**
      * @inheritDoc
      */
-    public $neededPermissions = [];
-    
+    public $neededPermissions = ['admin.calendar.canManageImport'];
+
     /**
-     * target import ID from calendar1_event_import table
-     * @var int
+     * Debug information array
+     * @var array
      */
-    public $targetImportID = 0;
-    
-    /**
-     * board ID for new threads
-     * @var int
-     */
-    public $boardID = 0;
-    
-    /**
-     * create threads automatically
-     * @var bool
-     */
-    public $createThreads = true;
-    
-    /**
-     * convert timezone
-     * @var bool
-     */
-    public $convertTimezone = true;
-    
-    /**
-     * auto mark past events as read
-     * @var bool
-     */
-    public $autoMarkPastRead = true;
-    
-    /**
-     * mark updated events as unread
-     * @var bool
-     */
-    public $markUpdatedUnread = true;
-    
-    /**
-     * maximum events per import
-     * @var int
-     */
-    public $maxEvents = 100;
-    
-    /**
-     * log level
-     * @var string
-     */
-    public $logLevel = 'info';
-    
+    protected $debugInfo = [];
+
     /**
      * @inheritDoc
      */
     public function readData() {
         parent::readData();
-        
-        // Load existing values from options
-        if (empty($_POST)) {
-            if (defined('CALENDAR_IMPORT_TARGET_IMPORT_ID')) {
-                $this->targetImportID = CALENDAR_IMPORT_TARGET_IMPORT_ID;
-            }
-            if (defined('CALENDAR_IMPORT_DEFAULT_BOARD_ID')) {
-                $this->boardID = CALENDAR_IMPORT_DEFAULT_BOARD_ID;
-            }
-            if (defined('CALENDAR_IMPORT_CREATE_THREADS')) {
-                $this->createThreads = (bool)CALENDAR_IMPORT_CREATE_THREADS;
-            }
-            if (defined('CALENDAR_IMPORT_CONVERT_TIMEZONE')) {
-                $this->convertTimezone = (bool)CALENDAR_IMPORT_CONVERT_TIMEZONE;
-            }
-            if (defined('CALENDAR_IMPORT_AUTO_MARK_PAST_READ')) {
-                $this->autoMarkPastRead = (bool)CALENDAR_IMPORT_AUTO_MARK_PAST_READ;
-            }
-            if (defined('CALENDAR_IMPORT_MARK_UPDATED_UNREAD')) {
-                $this->markUpdatedUnread = (bool)CALENDAR_IMPORT_MARK_UPDATED_UNREAD;
-            }
-            if (defined('CALENDAR_IMPORT_MAX_EVENTS')) {
-                $this->maxEvents = CALENDAR_IMPORT_MAX_EVENTS;
-            }
-            if (defined('CALENDAR_IMPORT_LOG_LEVEL')) {
-                $this->logLevel = CALENDAR_IMPORT_LOG_LEVEL;
-            }
-        }
+
+        // Collect debug information
+        $this->debugInfo = $this->collectDebugInfo();
     }
-    
+
     /**
-     * @inheritDoc
+     * Collects debug information including package info, event listeners,
+     * options, listener classes, and event classes.
+     *
+     * @return array
      */
-    public function readFormParameters() {
-        parent::readFormParameters();
-        
-        if (isset($_POST['targetImportID'])) $this->targetImportID = intval($_POST['targetImportID']);
-        if (isset($_POST['boardID'])) $this->boardID = intval($_POST['boardID']);
-        $this->createThreads = isset($_POST['createThreads']);
-        $this->convertTimezone = isset($_POST['convertTimezone']);
-        $this->autoMarkPastRead = isset($_POST['autoMarkPastRead']);
-        $this->markUpdatedUnread = isset($_POST['markUpdatedUnread']);
-        if (isset($_POST['maxEvents'])) $this->maxEvents = intval($_POST['maxEvents']);
-        if (isset($_POST['logLevel'])) $this->logLevel = StringUtil::trim($_POST['logLevel']);
+    protected function collectDebugInfo(): array {
+        $debugInfo = [];
+
+        // Gather package info
+        $debugInfo['packageInfo'] = $this->getPackageInfo();
+
+        // Gather event listeners
+        $debugInfo['eventListeners'] = $this->getEventListeners();
+
+        // Gather options
+        $debugInfo['options'] = $this->getOptions();
+
+        // Gather listener classes
+        $debugInfo['listenerClasses'] = $this->getListenerClasses();
+
+        // Gather event classes
+        $debugInfo['eventClasses'] = $this->getEventClasses();
+
+        // Add collection timestamp
+        $debugInfo['collectedAt'] = date('Y-m-d H:i:s');
+
+        return $debugInfo;
     }
-    
+
     /**
-     * @inheritDoc
+     * Retrieves package information.
+     *
+     * @return array
      */
-    public function validate() {
-        parent::validate();
-        
-        if ($this->createThreads && $this->boardID <= 0) {
-            throw new \wcf\system\exception\UserInputException('boardID', 'notValid');
+    protected function getPackageInfo(): array {
+        $packageInfo = [];
+
+        $packages = PackageCache::getInstance()->getPackages();
+        foreach ($packages as $package) {
+            $packageInfo[] = [
+                'packageID' => $package->packageID,
+                'package' => $package->package,
+                'packageName' => $package->getName(),
+                'packageVersion' => $package->packageVersion,
+                'packageDate' => $package->packageDate,
+                'isApplication' => $package->isApplication,
+            ];
         }
-        
-        if ($this->maxEvents < 1 || $this->maxEvents > 10000) {
-            throw new \wcf\system\exception\UserInputException('maxEvents', 'notValid');
-        }
-        
-        $validLogLevels = ['error', 'warning', 'info', 'debug'];
-        if (!in_array($this->logLevel, $validLogLevels)) {
-            throw new \wcf\system\exception\UserInputException('logLevel', 'notValid');
-        }
+
+        return $packageInfo;
     }
-    
+
     /**
-     * @inheritDoc
+     * Retrieves registered event listeners.
+     *
+     * @return array
      */
-    public function save() {
-        parent::save();
-        
-        $this->updateOption('calendar_import_target_import_id', $this->targetImportID);
-        $this->updateOption('calendar_import_default_board_id', $this->boardID);
-        $this->updateOption('calendar_import_create_threads', $this->createThreads ? 1 : 0);
-        $this->updateOption('calendar_import_convert_timezone', $this->convertTimezone ? 1 : 0);
-        $this->updateOption('calendar_import_auto_mark_past_read', $this->autoMarkPastRead ? 1 : 0);
-        $this->updateOption('calendar_import_mark_updated_unread', $this->markUpdatedUnread ? 1 : 0);
-        $this->updateOption('calendar_import_max_events', $this->maxEvents);
-        $this->updateOption('calendar_import_log_level', $this->logLevel);
-        
-        \wcf\system\cache\builder\OptionCacheBuilder::getInstance()->reset();
-        
-        $this->saved();
-        
-        WCF::getTPL()->assign('success', true);
+    protected function getEventListeners(): array {
+        $eventListeners = [];
+
+        $sql = "SELECT      event_listener.*, package.package AS packageIdentifier
+                FROM        wcf1_event_listener event_listener
+                LEFT JOIN   wcf1_package package
+                ON          package.packageID = event_listener.packageID
+                ORDER BY    event_listener.listenerClassName";
+        $statement = WCF::getDB()->prepare($sql);
+        $statement->execute();
+
+        while ($row = $statement->fetchArray()) {
+            $eventListeners[] = [
+                'listenerID' => $row['listenerID'],
+                'eventClassName' => $row['eventClassName'],
+                'eventName' => $row['eventName'],
+                'listenerClassName' => $row['listenerClassName'],
+                'inherit' => $row['inherit'],
+                'niceValue' => $row['niceValue'],
+                'packageIdentifier' => $row['packageIdentifier'],
+            ];
+        }
+
+        return $eventListeners;
     }
-    
+
     /**
-     * Updates an option value in the database.
+     * Retrieves system options.
+     *
+     * @return array
      */
-    protected function updateOption($optionName, $optionValue) {
-        $sql = "UPDATE wcf".WCF_N."_option SET optionValue = ? WHERE optionName = ?";
-        $statement = WCF::getDB()->prepareStatement($sql);
-        $statement->execute([$optionValue, $optionName]);
+    protected function getOptions(): array {
+        $options = [];
+
+        $sql = "SELECT      option_table.*, category.categoryName
+                FROM        wcf1_option option_table
+                LEFT JOIN   wcf1_option_category category
+                ON          category.categoryID = option_table.categoryID
+                ORDER BY    option_table.optionName";
+        $statement = WCF::getDB()->prepare($sql);
+        $statement->execute();
+
+        while ($row = $statement->fetchArray()) {
+            $options[] = [
+                'optionID' => $row['optionID'],
+                'optionName' => $row['optionName'],
+                'categoryName' => $row['categoryName'],
+                'optionType' => $row['optionType'],
+                'optionValue' => $row['optionValue'],
+                'isDisabled' => $row['isDisabled'],
+            ];
+        }
+
+        return $options;
     }
-    
+
+    /**
+     * Retrieves listener classes from event listeners.
+     *
+     * @return array
+     */
+    protected function getListenerClasses(): array {
+        $listenerClasses = [];
+
+        $sql = "SELECT DISTINCT listenerClassName
+                FROM   wcf1_event_listener
+                ORDER BY listenerClassName";
+        $statement = WCF::getDB()->prepare($sql);
+        $statement->execute();
+
+        while ($row = $statement->fetchArray()) {
+            $className = $row['listenerClassName'];
+            $listenerClasses[] = [
+                'className' => $className,
+                'exists' => class_exists($className),
+                'implements' => class_exists($className) ? class_implements($className) : [],
+            ];
+        }
+
+        return $listenerClasses;
+    }
+
+    /**
+     * Retrieves event classes from event listeners.
+     *
+     * @return array
+     */
+    protected function getEventClasses(): array {
+        $eventClasses = [];
+
+        $sql = "SELECT DISTINCT eventClassName
+                FROM   wcf1_event_listener
+                ORDER BY eventClassName";
+        $statement = WCF::getDB()->prepare($sql);
+        $statement->execute();
+
+        while ($row = $statement->fetchArray()) {
+            $className = $row['eventClassName'];
+            $eventClasses[] = [
+                'className' => $className,
+                'exists' => class_exists($className),
+                'parentClass' => class_exists($className) ? get_parent_class($className) : null,
+            ];
+        }
+
+        return $eventClasses;
+    }
+
     /**
      * @inheritDoc
      */
     public function assignVariables() {
         parent::assignVariables();
-        
+
         WCF::getTPL()->assign([
-            'targetImportID' => $this->targetImportID,
-            'boardID' => $this->boardID,
-            'createThreads' => $this->createThreads,
-            'convertTimezone' => $this->convertTimezone,
-            'autoMarkPastRead' => $this->autoMarkPastRead,
-            'markUpdatedUnread' => $this->markUpdatedUnread,
-            'maxEvents' => $this->maxEvents,
-            'logLevel' => $this->logLevel
+            'debugInfo' => $this->debugInfo,
+            'packageInfo' => $this->debugInfo['packageInfo'] ?? [],
+            'eventListeners' => $this->debugInfo['eventListeners'] ?? [],
+            'options' => $this->debugInfo['options'] ?? [],
+            'listenerClasses' => $this->debugInfo['listenerClasses'] ?? [],
+            'eventClasses' => $this->debugInfo['eventClasses'] ?? [],
+            'debugCollectedAt' => $this->debugInfo['collectedAt'] ?? '',
         ]);
     }
 }
