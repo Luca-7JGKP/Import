@@ -1,0 +1,59 @@
+name: Build WoltLab Plugin
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create files.tar
+        run: |
+          if [ -d "files" ]; then
+            tar -cf files.tar -C files .
+          fi
+
+      - name: Create acptemplates.tar
+        run: |
+          if [ -d "acptemplates" ]; then
+            tar -cf acptemplates.tar -C acptemplates .
+          fi
+
+      - name: Create plugin package
+        run: |
+          mkdir -p dist
+          cp package.xml dist/
+          [ -f "files.tar" ] && cp files.tar dist/
+          [ -f "acptemplates.tar" ] && cp acptemplates.tar dist/
+          [ -f "eventListener.xml" ] && cp eventListener.xml dist/
+          [ -f "options.xml" ] && cp options.xml dist/
+          [ -f "acpMenu.xml" ] && cp acpMenu.xml dist/
+          [ -f "install.sql" ] && cp install.sql dist/
+
+          if [ -d "language" ]; then
+            mkdir -p dist/language
+            cp language/*.xml dist/language/
+          fi
+
+          cd dist
+          tar -cf ../com.lucaberwind.wcf.calendar.import.tar *
+          cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: com.lucaberwind.wcf.calendar.import
+          path: com.lucaberwind.wcf.calendar.import.tar
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: com.lucaberwind.wcf.calendar.import.tar
