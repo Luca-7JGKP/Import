@@ -4,7 +4,6 @@
         <acpmenuitem name="wcf.acp.menu.link.calendar.import">
             <parent>wcf.acp.menu.link.option</parent>
             <controller>wcf\acp\form\CalendarImportSettingsForm</controller>
-            <permissions>admin.configuration.canManageApplication</permissions>
         </acpmenuitem>
     </import>
 </data>
