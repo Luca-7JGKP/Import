@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/2019/eventListener.xsd">
+    <import>
+        <eventlistener name="icalImportExtension">
+            <eventclassname>wcf\system\calendar\ICalImporter</eventclassname>
+            <eventname>beforeImport,afterImport,validateImport</eventname>
+            <listenerclassname>wcf\system\event\listener\ICalImportExtensionEventListener</listenerclassname>
+            <environment>all</environment>
+        </eventlistener>
+        
+        <eventlistener name="calendarEventView">
+            <eventclassname>calendar\page\CalendarEventPage</eventclassname>
+            <eventname>readData,show</eventname>
+            <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
+            <environment>user</environment>
+        </eventlistener>
+    </import>
+</data>
