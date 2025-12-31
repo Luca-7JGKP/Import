@@ -10,7 +10,7 @@ use wcf\util\StringUtil;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.1.1
+ * @version 1.3.1
  */
 class CalendarImportSettingsForm extends AbstractForm {
     /**
@@ -51,13 +51,13 @@ class CalendarImportSettingsForm extends AbstractForm {
      * auto mark past events as read
      * @var bool
      */
-    public $autoMarkPastEventsRead = true;
+    public $autoMarkPastRead = true;
     
     /**
      * mark updated events as unread
      * @var bool
      */
-    public $markUpdatedAsUnread = true;
+    public $markUpdatedUnread = true;
     
     /**
      * maximum events per import
@@ -74,19 +74,50 @@ class CalendarImportSettingsForm extends AbstractForm {
     /**
      * @inheritDoc
      */
+    public function readData() {
+        parent::readData();
+        
+        // Load existing values from options
+        if (empty($_POST)) {
+            if (defined('CALENDAR_IMPORT_TARGET_IMPORT_ID')) {
+                $this->targetImportID = CALENDAR_IMPORT_TARGET_IMPORT_ID;
+            }
+            if (defined('CALENDAR_IMPORT_DEFAULT_BOARD_ID')) {
+                $this->boardID = CALENDAR_IMPORT_DEFAULT_BOARD_ID;
+            }
+            if (defined('CALENDAR_IMPORT_CREATE_THREADS')) {
+                $this->createThreads = (bool)CALENDAR_IMPORT_CREATE_THREADS;
+            }
+            if (defined('CALENDAR_IMPORT_CONVERT_TIMEZONE')) {
+                $this->convertTimezone = (bool)CALENDAR_IMPORT_CONVERT_TIMEZONE;
+            }
+            if (defined('CALENDAR_IMPORT_AUTO_MARK_PAST_READ')) {
+                $this->autoMarkPastRead = (bool)CALENDAR_IMPORT_AUTO_MARK_PAST_READ;
+            }
+            if (defined('CALENDAR_IMPORT_MARK_UPDATED_UNREAD')) {
+                $this->markUpdatedUnread = (bool)CALENDAR_IMPORT_MARK_UPDATED_UNREAD;
+            }
+            if (defined('CALENDAR_IMPORT_MAX_EVENTS')) {
+                $this->maxEvents = CALENDAR_IMPORT_MAX_EVENTS;
+            }
+            if (defined('CALENDAR_IMPORT_LOG_LEVEL')) {
+                $this->logLevel = CALENDAR_IMPORT_LOG_LEVEL;
+            }
+        }
+    }
+    
+    /**
+     * @inheritDoc
+     */
     public function readFormParameters() {
         parent::readFormParameters();
         
         if (isset($_POST['targetImportID'])) $this->targetImportID = intval($_POST['targetImportID']);
         if (isset($_POST['boardID'])) $this->boardID = intval($_POST['boardID']);
-        if (isset($_POST['createThreads'])) $this->createThreads = true;
-        else $this->createThreads = false;
-        if (isset($_POST['convertTimezone'])) $this->convertTimezone = true;
-        else $this->convertTimezone = false;
-        if (isset($_POST['autoMarkPastEventsRead'])) $this->autoMarkPastEventsRead = true;
-        else $this->autoMarkPastEventsRead = false;
-        if (isset($_POST['markUpdatedAsUnread'])) $this->markUpdatedAsUnread = true;
-        else $this->markUpdatedAsUnread = false;
+        $this->createThreads = isset($_POST['createThreads']);
+        $this->convertTimezone = isset($_POST['convertTimezone']);
+        $this->autoMarkPastRead = isset($_POST['autoMarkPastRead']);
+        $this->markUpdatedUnread = isset($_POST['markUpdatedUnread']);
         if (isset($_POST['maxEvents'])) $this->maxEvents = intval($_POST['maxEvents']);
         if (isset($_POST['logLevel'])) $this->logLevel = StringUtil::trim($_POST['logLevel']);
     }
@@ -97,18 +128,16 @@ class CalendarImportSettingsForm extends AbstractForm {
     public function validate() {
         parent::validate();
         
-        // Validate board ID - simple validation, just check if positive number when threads should be created
         if ($this->createThreads && $this->boardID <= 0) {
             throw new \wcf\system\exception\UserInputException('boardID', 'notValid');
         }
         
-        // Validate max events
         if ($this->maxEvents < 1 || $this->maxEvents > 10000) {
             throw new \wcf\system\exception\UserInputException('maxEvents', 'notValid');
         }
         
-        // Validate log level
-        if (!in_array($this->logLevel, ['error', 'warning', 'info', 'debug'])) {
+        $validLogLevels = ['error', 'warning', 'info', 'debug'];
+        if (!in_array($this->logLevel, $validLogLevels)) {
             throw new \wcf\system\exception\UserInputException('logLevel', 'notValid');
         }
     }
@@ -119,44 +148,29 @@ class CalendarImportSettingsForm extends AbstractForm {
     public function save() {
         parent::save();
         
-        // Save options
-        $sql = "UPDATE wcf".WCF_N."_option 
-                SET optionValue = ? 
-                WHERE optionName = ?";
-        $statement = WCF::getDB()->prepareStatement($sql);
+        $this->updateOption('calendar_import_target_import_id', $this->targetImportID);
+        $this->updateOption('calendar_import_default_board_id', $this->boardID);
+        $this->updateOption('calendar_import_create_threads', $this->createThreads ? 1 : 0);
+        $this->updateOption('calendar_import_convert_timezone', $this->convertTimezone ? 1 : 0);
+        $this->updateOption('calendar_import_auto_mark_past_read', $this->autoMarkPastRead ? 1 : 0);
+        $this->updateOption('calendar_import_mark_updated_unread', $this->markUpdatedUnread ? 1 : 0);
+        $this->updateOption('calendar_import_max_events', $this->maxEvents);
+        $this->updateOption('calendar_import_log_level', $this->logLevel);
         
-        $statement->execute([$this->targetImportID, 'calendar_import_target_import_id']);
-        $statement->execute([$this->boardID, 'calendar_import_default_board_id']);
-        $statement->execute([$this->createThreads ? '1' : '0', 'calendar_import_create_threads']);
-        $statement->execute([$this->convertTimezone ? '1' : '0', 'calendar_import_convert_timezone']);
-        $statement->execute([$this->autoMarkPastEventsRead ? '1' : '0', 'calendar_import_auto_mark_past_events_read']);
-        $statement->execute([$this->markUpdatedAsUnread ? '1' : '0', 'calendar_import_mark_updated_as_unread']);
-        $statement->execute([$this->maxEvents, 'calendar_import_max_events']);
-        $statement->execute([$this->logLevel, 'calendar_import_log_level']);
+        \wcf\system\cache\builder\OptionCacheBuilder::getInstance()->reset();
         
         $this->saved();
         
-        // Show success message
         WCF::getTPL()->assign('success', true);
     }
     
     /**
-     * @inheritDoc
+     * Updates an option value in the database.
      */
-    public function readData() {
-        parent::readData();
-        
-        if (empty($_POST)) {
-            // Load current values from options
-            $this->targetImportID = defined('CALENDAR_IMPORT_TARGET_IMPORT_ID') ? intval(CALENDAR_IMPORT_TARGET_IMPORT_ID) : 0;
-            $this->boardID = defined('CALENDAR_IMPORT_DEFAULT_BOARD_ID') ? intval(CALENDAR_IMPORT_DEFAULT_BOARD_ID) : 0;
-            $this->createThreads = defined('CALENDAR_IMPORT_CREATE_THREADS') ? (CALENDAR_IMPORT_CREATE_THREADS == 1) : true;
-            $this->convertTimezone = defined('CALENDAR_IMPORT_CONVERT_TIMEZONE') ? (CALENDAR_IMPORT_CONVERT_TIMEZONE == 1) : true;
-            $this->autoMarkPastEventsRead = defined('CALENDAR_IMPORT_AUTO_MARK_PAST_EVENTS_READ') ? (CALENDAR_IMPORT_AUTO_MARK_PAST_EVENTS_READ == 1) : true;
-            $this->markUpdatedAsUnread = defined('CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD') ? (CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD == 1) : true;
-            $this->maxEvents = defined('CALENDAR_IMPORT_MAX_EVENTS') ? intval(CALENDAR_IMPORT_MAX_EVENTS) : 100;
-            $this->logLevel = defined('CALENDAR_IMPORT_LOG_LEVEL') ? CALENDAR_IMPORT_LOG_LEVEL : 'info';
-        }
+    protected function updateOption($optionName, $optionValue) {
+        $sql = "UPDATE wcf".WCF_N."_option SET optionValue = ? WHERE optionName = ?";
+        $statement = WCF::getDB()->prepareStatement($sql);
+        $statement->execute([$optionValue, $optionName]);
     }
     
     /**
@@ -170,8 +184,8 @@ class CalendarImportSettingsForm extends AbstractForm {
             'boardID' => $this->boardID,
             'createThreads' => $this->createThreads,
             'convertTimezone' => $this->convertTimezone,
-            'autoMarkPastEventsRead' => $this->autoMarkPastEventsRead,
-            'markUpdatedAsUnread' => $this->markUpdatedAsUnread,
+            'autoMarkPastRead' => $this->autoMarkPastRead,
+            'markUpdatedUnread' => $this->markUpdatedUnread,
             'maxEvents' => $this->maxEvents,
             'logLevel' => $this->logLevel
         ]);
