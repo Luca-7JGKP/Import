@@ -50,7 +50,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
      * @param array $parameters
      */
     protected function convertTimezone($eventObj, array &$parameters) {
-        if (!CALENDAR_IMPORT_CONVERT_TIMEZONE) {
+        if (!defined('CALENDAR_IMPORT_CONVERT_TIMEZONE') || !CALENDAR_IMPORT_CONVERT_TIMEZONE) {
             return;
         }
         
@@ -125,7 +125,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
     
     /**
      * Verwaltet Gelesen/Ungelesen-Status für importierte Events.
-     * FIX #2: Zukünftige Events können jetzt als gelesen markiert werden
+     * FIX #2: Implementiert korrekte Logik für automatisches Markieren basierend auf Konfiguration
      * 
      * @param object $eventObj
      * @param array $parameters
@@ -140,15 +140,29 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
             return;
         }
         
-        // Importierte Events starten als "ungelesen" (lastVisitTime = 0)
-        // Dies funktioniert auch für zukünftige Events
-        $initialVisitTime = 0;
+        $eventID = $parameters['eventID'];
+        $startTime = isset($parameters['startTime']) ? intval($parameters['startTime']) : TIME_NOW;
+        $isUpdate = isset($parameters['isUpdate']) && $parameters['isUpdate'];
         
-        // Nur als "gelesen" markieren wenn explizit angegeben
-        if (isset($parameters['markAsRead']) && $parameters['markAsRead']) {
+        // Bestimme initialVisitTime basierend auf Konfiguration
+        $initialVisitTime = 0; // Standard: ungelesen
+        
+        // Fall 1: Bei Updates und wenn CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD aktiv ist
+        // -> Event als ungelesen markieren (lastVisitTime = 0)
+        if ($isUpdate && defined('CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD') && CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD) {
+            $initialVisitTime = 0;
+        }
+        // Fall 2: Vergangene Events automatisch als gelesen markieren wenn Option aktiv
+        // -> nur wenn es KEIN Update ist oder die Update-Option nicht aktiv ist
+        elseif ($startTime < TIME_NOW && defined('CALENDAR_IMPORT_AUTO_MARK_PAST_EVENTS_READ') && CALENDAR_IMPORT_AUTO_MARK_PAST_EVENTS_READ) {
+            $initialVisitTime = TIME_NOW;
+        }
+        // Fall 3: Explizit als gelesen markieren (aus Parameters)
+        elseif (isset($parameters['markAsRead']) && $parameters['markAsRead']) {
             $initialVisitTime = TIME_NOW;
         }
         
+        // Speichere oder aktualisiere Visit-Status
         $sql = "INSERT INTO wcf".WCF_N."_calendar_event_visit 
                 (eventID, userID, lastVisitTime)
                 VALUES (?, ?, ?)
@@ -156,7 +170,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         
         $statement = WCF::getDB()->prepareStatement($sql);
         $statement->execute([
-            $parameters['eventID'],
+            $eventID,
             $userID,
             $initialVisitTime,
             $initialVisitTime

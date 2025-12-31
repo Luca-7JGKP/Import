@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/vortex/language.xsd" languagecode="de">
+    <!-- Admin-Menü -->
+    <category name="wcf.acp.menu">
+        <item name="wcf.acp.menu.link.calendar.import"><![CDATA[Kalender Import]]></item>
+    </category>
+    
+    <!-- Calendar Import Settings -->
+    <category name="wcf.acp.calendar.import">
+        <item name="wcf.acp.calendar.import.settings"><![CDATA[Kalender Import Einstellungen]]></item>
+        <item name="wcf.acp.calendar.import.settings.description"><![CDATA[Konfiguriere Import-Einstellungen, Thread-Erstellung und Gelesen/Ungelesen-Verwaltung für Kalender-Events.]]></item>
+        
+        <!-- Import Section -->
+        <item name="wcf.acp.calendar.import.import"><![CDATA[Import]]></item>
+        <item name="wcf.acp.calendar.import.targetImportID"><![CDATA[iCal-Import ID]]></item>
+        <item name="wcf.acp.calendar.import.targetImportID.description"><![CDATA[Die Import-ID aus der Tabelle calendar1_event_import, für die diese Einstellungen gelten sollen. 0 = Alle Imports.]]></item>
+        
+        <!-- Tracking Section -->
+        <item name="wcf.acp.calendar.import.tracking"><![CDATA[Gelesen/Ungelesen-Verwaltung]]></item>
+        <item name="wcf.acp.calendar.import.readStatus"><![CDATA[Gelesen/Ungelesen-Status]]></item>
+        <item name="wcf.acp.calendar.import.autoMarkPastEventsRead"><![CDATA[Vergangene Events als gelesen markieren]]></item>
+        <item name="wcf.acp.calendar.import.autoMarkPastEventsRead.description"><![CDATA[Events, die in der Vergangenheit liegen (Startzeit < jetzt), werden automatisch als gelesen markiert.]]></item>
+        <item name="wcf.acp.calendar.import.markUpdatedAsUnread"><![CDATA[Aktualisierte Events als ungelesen markieren]]></item>
+        <item name="wcf.acp.calendar.import.markUpdatedAsUnread.description"><![CDATA[Wenn ein Event durch den iCal-Import aktualisiert wird, wird es wieder als ungelesen markiert.]]></item>
+        
+        <!-- General Section -->
+        <item name="wcf.acp.calendar.import.general"><![CDATA[Allgemein]]></item>
+        <item name="wcf.acp.calendar.import.boardID"><![CDATA[Standard-Forum (Board-ID)]]></item>
+        <item name="wcf.acp.calendar.import.boardID.description"><![CDATA[Die Board-ID des Forums, in dem automatisch Threads für importierte Events erstellt werden sollen.]]></item>
+        <item name="wcf.acp.calendar.import.createThreads"><![CDATA[Threads automatisch erstellen]]></item>
+        <item name="wcf.acp.calendar.import.createThreads.description"><![CDATA[Erstellt automatisch Forum-Threads für neu importierte Kalender-Events.]]></item>
+        <item name="wcf.acp.calendar.import.convertTimezone"><![CDATA[Zeitzone konvertieren]]></item>
+        <item name="wcf.acp.calendar.import.convertTimezone.description"><![CDATA[Konvertiert importierte Event-Zeiten in die Server-/Benutzer-Zeitzone.]]></item>
+        
+        <!-- Advanced Section -->
+        <item name="wcf.acp.calendar.import.advanced"><![CDATA[Erweitert]]></item>
+        <item name="wcf.acp.calendar.import.maxEvents"><![CDATA[Maximale Events pro Import]]></item>
+        <item name="wcf.acp.calendar.import.maxEvents.description"><![CDATA[Maximale Anzahl von Events, die pro Import-Durchlauf verarbeitet werden (1-10000).]]></item>
+        <item name="wcf.acp.calendar.import.logLevel"><![CDATA[Log-Level]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.description"><![CDATA[Bestimmt, welche Ereignisse im Import-Log gespeichert werden.]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.error"><![CDATA[Nur Fehler]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.warning"><![CDATA[Warnungen und Fehler]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.info"><![CDATA[Informationen (Standard)]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.debug"><![CDATA[Debug (Alle Meldungen)]]></item>
+    </category>
+</language>

@@ -27,6 +27,8 @@
         <!-- SPRACHE ZUERST! -->
         <instruction type="language">xml/language.xml</instruction>
         <instruction type="language">xml/language_de_informal.xml</instruction>
+        <instruction type="language">language/de.xml</instruction>
+        <instruction type="language">language/en.xml</instruction>
         
         <!-- Event-Listener -->
         <instruction type="eventListener">xml/eventListener.xml</instruction>
@@ -56,6 +58,8 @@
         <instruction type="option">xml/option.xml</instruction>
         <instruction type="acpMenu">xml/acpMenu.xml</instruction>
         <instruction type="language">xml/language.xml</instruction>
+        <instruction type="language">language/de.xml</instruction>
+        <instruction type="language">language/en.xml</instruction>
         <instruction type="page">xml/page.xml</instruction>
     </instructions>
     

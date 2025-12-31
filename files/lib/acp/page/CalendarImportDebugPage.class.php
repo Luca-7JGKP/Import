@@ -1,6 +1,6 @@
 <?php
 namespace wcf\acp\page;
-use wcf\page\AbstractPage;
+use wcf\acp\page\AbstractPage;
 use wcf\system\WCF;
 use wcf\system\language\LanguageFactory;
 
