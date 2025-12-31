@@ -21,7 +21,7 @@
             <nice>0</nice>
         </eventlistener>
         
-        <!-- Event-Listener für Event-Aktionen (erstellen, bearbeiten, löschen) -->
+        <!-- Event-Listener für EventAction (create, update, delete) -->
         <eventlistener name="calendarEventAction">
             <eventclassname>calendar\data\event\EventAction</eventclassname>
             <eventname>finalizeAction</eventname>
@@ -31,7 +31,7 @@
             <nice>0</nice>
         </eventlistener>
         
-        <!-- Event-Listener für Event-Datum-Aktionen -->
+        <!-- Event-Listener für EventDateAction -->
         <eventlistener name="calendarEventDateAction">
             <eventclassname>calendar\data\event\date\EventDateAction</eventclassname>
             <eventname>finalizeAction</eventname>
