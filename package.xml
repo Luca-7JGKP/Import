@@ -30,8 +30,8 @@
     </instructions>
     
     <instructions type="update" fromversion="*">
-        <instruction type="file" />
-        <instruction type="acpTemplate" />
+        <instruction type="file">files.tar</instruction>
+        <instruction type="acpTemplate">acptemplates.tar</instruction>
         <instruction type="eventListener">xml/eventListener.xml</instruction>
         <instruction type="option">xml/option.xml</instruction>
         <instruction type="acpMenu">xml/acpMenu.xml</instruction>
