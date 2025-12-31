@@ -15,7 +15,6 @@
     
     <requiredpackages>
         <requiredpackage minversion="5.4.22">com.woltlab.wcf</requiredpackage>
-        <requiredpackage minversion="3.1.0">de.cadetvonkansen.calendar</requiredpackage>
     </requiredpackages>
     
     <instructions type="install">
