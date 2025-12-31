@@ -11,11 +11,15 @@
     <woltlab-core-notice type="success">{lang}wcf.global.success.edit{/lang}</woltlab-core-notice>
 {/if}
 
+{if $errorField}
+    <woltlab-core-notice type="error">{lang}wcf.global.form.error{/lang}</woltlab-core-notice>
+{/if}
+
 <form method="post" action="{link controller='CalendarImportSettings'}{/link}">
     <section class="section">
         <h2 class="sectionTitle">{lang}wcf.acp.calendar.import.import{/lang}</h2>
         
-        <dl>
+        <dl{if $errorField == 'targetImportID'} class="formError"{/if}>
             <dt><label for="targetImportID">{lang}wcf.acp.calendar.import.targetImportID{/lang}</label></dt>
             <dd>
                 <input type="number" id="targetImportID" name="targetImportID" value="{$targetImportID}" class="short" min="0">
@@ -47,7 +51,7 @@
     <section class="section">
         <h2 class="sectionTitle">{lang}wcf.acp.calendar.import.general{/lang}</h2>
         
-        <dl>
+        <dl{if $errorField == 'boardID'} class="formError"{/if}>
             <dt><label for="boardID">{lang}wcf.acp.calendar.import.boardID{/lang}</label></dt>
             <dd>
                 <input type="number" id="boardID" name="boardID" value="{$boardID}" class="short" min="0">
@@ -75,7 +79,7 @@
     <section class="section">
         <h2 class="sectionTitle">{lang}wcf.acp.calendar.import.advanced{/lang}</h2>
         
-        <dl>
+        <dl{if $errorField == 'maxEvents'} class="formError"{/if}>
             <dt><label for="maxEvents">{lang}wcf.acp.calendar.import.maxEvents{/lang}</label></dt>
             <dd>
                 <input type="number" id="maxEvents" name="maxEvents" value="{$maxEvents}" class="short" min="1" max="10000">
@@ -83,7 +87,7 @@
             </dd>
         </dl>
         
-        <dl>
+        <dl{if $errorField == 'logLevel'} class="formError"{/if}>
             <dt><label for="logLevel">{lang}wcf.acp.calendar.import.logLevel{/lang}</label></dt>
             <dd>
                 <select id="logLevel" name="logLevel">
@@ -106,57 +110,121 @@
 <section class="section">
     <h2 class="sectionTitle">🔍 Debug-Informationen</h2>
     
-    <div class="formFieldDesc" style="background: #1a1a2e; color: #eee; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px;">
+    <div style="background: #1a1a2e; color: #eee; padding: 20px; border-radius: 8px; margin-top: 15px;">
+        <p style="color: #888; margin-bottom: 15px;">Zeitstempel: {time()}</p>
         
-        <h3 style="color: #00d4ff; margin-top: 0;">1. Plugin-Installation</h3>
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">1. Plugin-Installation</h3>
         {if $debugInfo.package}
-            <p style="color: #00ff88;">✅ Plugin installiert: {$debugInfo.package.package} v{$debugInfo.package.packageVersion}</p>
+            <div style="background: #143d1e; padding: 10px; border-radius: 4px; border-left: 3px solid #00ff88;">
+                ✅ Plugin installiert: <strong>{$debugInfo.package.package}</strong><br>
+                Version: {$debugInfo.package.packageVersion} | Package-ID: {$debugInfo.package.packageID}
+            </div>
         {else}
-            <p style="color: #ff6b6b;">❌ Plugin nicht gefunden!</p>
+            <div style="background: #3d1414; padding: 10px; border-radius: 4px; border-left: 3px solid #ff6b6b;">
+                ❌ Plugin nicht gefunden!
+            </div>
         {/if}
         
-        <h3 style="color: #00d4ff;">2. Event-Listener ({$debugInfo.eventListeners|count})</h3>
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">2. Event-Listener ({$debugInfo.eventListeners|count})</h3>
         {if $debugInfo.eventListeners|count > 0}
-            <p style="color: #00ff88;">✅ {$debugInfo.eventListeners|count} Event-Listener registriert</p>
-            <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
-                <tr style="background: #0f3460;"><th style="padding: 5px; text-align: left;">Name</th><th style="padding: 5px; text-align: left;">Event-Klasse</th></tr>
+            <div style="background: #143d1e; padding: 10px; border-radius: 4px; border-left: 3px solid #00ff88;">
+                ✅ {$debugInfo.eventListeners|count} Event-Listener registriert
+            </div>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+                <tr style="background: #0f3460;">
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Name</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Event-Klasse</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Event</th>
+                </tr>
                 {foreach from=$debugInfo.eventListeners item=listener}
                 <tr style="border-bottom: 1px solid #2d3a5c;">
-                    <td style="padding: 5px;">{$listener.listenerName}</td>
-                    <td style="padding: 5px; font-size: 10px;">{$listener.eventClassName}</td>
+                    <td style="padding: 8px;">{$listener.listenerName}</td>
+                    <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$listener.eventClassName}</td>
+                    <td style="padding: 8px;">{$listener.eventName}</td>
                 </tr>
                 {/foreach}
             </table>
         {else}
-            <p style="color: #ff6b6b;">❌ Keine Event-Listener registriert!</p>
+            <div style="background: #3d1414; padding: 10px; border-radius: 4px; border-left: 3px solid #ff6b6b;">
+                ❌ Keine Event-Listener registriert! Plugin neu installieren.
+            </div>
         {/if}
         
-        <h3 style="color: #00d4ff;">3. Plugin-Optionen</h3>
-        <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
-            <tr style="background: #0f3460;"><th style="padding: 5px; text-align: left;">Option</th><th style="padding: 5px; text-align: left;">DB-Wert</th><th style="padding: 5px; text-align: left;">Konstante</th></tr>
-            {foreach from=$debugInfo.options key=optName item=optData}
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">3. Plugin-Optionen</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <tr style="background: #0f3460;">
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Option</th>
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">DB-Wert</th>
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Konstante</th>
+            </tr>
+            {foreach from=$debugInfo.options key=optionName item=optionData}
             <tr style="border-bottom: 1px solid #2d3a5c;">
-                <td style="padding: 5px; font-size: 10px;">{$optName}</td>
-                <td style="padding: 5px;">{$optData.value}</td>
-                <td style="padding: 5px;">{if $optData.constantDefined}<span style="color: #00ff88;">✅ {$optData.constantValue}</span>{else}<span style="color: #ff6b6b;">❌</span>{/if}</td>
+                <td style="padding: 8px; font-family: monospace;">{$optionName}</td>
+                <td style="padding: 8px;">{$optionData.value}</td>
+                <td style="padding: 8px;">
+                    {if $optionData.constantDefined}
+                        <span style="color: #00ff88;">✅ {$optionData.constantValue}</span>
+                    {else}
+                        <span style="color: #ff6b6b;">❌ Nicht definiert</span>
+                    {/if}
+                </td>
             </tr>
             {/foreach}
         </table>
         
-        <h3 style="color: #00d4ff;">4. Listener-Klassen</h3>
-        {foreach from=$debugInfo.listenerClasses key=className item=classData}
-            <p>{if $classData.exists}<span style="color: #00ff88;">✅</span>{else}<span style="color: #ff6b6b;">❌</span>{/if} {$className}</p>
-        {/foreach}
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">4. Listener PHP-Klassen</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <tr style="background: #0f3460;">
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Klasse</th>
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Status</th>
+            </tr>
+            {foreach from=$debugInfo.listenerClasses key=className item=classData}
+            <tr style="border-bottom: 1px solid #2d3a5c;">
+                <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$className}</td>
+                <td style="padding: 8px;">
+                    {if $classData.exists}
+                        <span style="color: #00ff88;">✅ Vorhanden</span>
+                    {else}
+                        <span style="color: #ff6b6b;">❌ Fehlt</span>
+                    {/if}
+                </td>
+            </tr>
+            {/foreach}
+        </table>
         
-        <h3 style="color: #00d4ff;">5. WoltLab Kalender-Klassen</h3>
-        {foreach from=$debugInfo.eventClasses key=className item=exists}
-            <p>{if $exists}<span style="color: #00ff88;">✅</span>{else}<span style="color: #feca57;">⚠️</span>{/if} {$className}</p>
-        {/foreach}
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">5. WoltLab Kalender-Klassen</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <tr style="background: #0f3460;">
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Klasse</th>
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Status</th>
+            </tr>
+            {foreach from=$debugInfo.eventClasses key=className item=exists}
+            <tr style="border-bottom: 1px solid #2d3a5c;">
+                <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$className}</td>
+                <td style="padding: 8px;">
+                    {if $exists}
+                        <span style="color: #00ff88;">✅ Vorhanden</span>
+                    {else}
+                        <span style="color: #feca57;">⚠️ Nicht gefunden</span>
+                    {/if}
+                </td>
+            </tr>
+            {/foreach}
+        </table>
         
-        <h3 style="color: #00d4ff;">6. Kalender-Pakete</h3>
-        {foreach from=$debugInfo.calendarPackages item=pkg}
-            <p>📦 {$pkg.package} v{$pkg.packageVersion}</p>
-        {/foreach}
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">6. Installierte Kalender-Pakete</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <tr style="background: #0f3460;">
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Paket</th>
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Version</th>
+            </tr>
+            {foreach from=$debugInfo.calendarPackages item=pkg}
+            <tr style="border-bottom: 1px solid #2d3a5c;">
+                <td style="padding: 8px; font-family: monospace;">{$pkg.package}</td>
+                <td style="padding: 8px;">{$pkg.packageVersion}</td>
+            </tr>
+            {/foreach}
+        </table>
     </div>
 </section>
 
