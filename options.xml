@@ -22,12 +22,12 @@
                 <optiontype>boolean</optiontype>
                 <defaultvalue>1</defaultvalue>
             </option>
-            <option name="calendar_import_auto_mark_past_events_read">
+            <option name="calendar_import_auto_mark_past_read">
                 <categoryname>calendar.import</categoryname>
                 <optiontype>boolean</optiontype>
                 <defaultvalue>1</defaultvalue>
             </option>
-            <option name="calendar_import_mark_updated_as_unread">
+            <option name="calendar_import_mark_updated_unread">
                 <categoryname>calendar.import</categoryname>
                 <optiontype>boolean</optiontype>
                 <defaultvalue>1</defaultvalue>
