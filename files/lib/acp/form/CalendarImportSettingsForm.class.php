@@ -13,73 +13,19 @@ use wcf\util\StringUtil;
  * @version 1.3.2
  */
 class CalendarImportSettingsForm extends AbstractForm {
-    /**
-     * @inheritDoc
-     */
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
-    
-    /**
-     * @inheritDoc
-     */
     public $neededPermissions = [];
     
-    /**
-     * target import ID
-     * @var int
-     */
     public $targetImportID = 0;
-    
-    /**
-     * board ID for new threads
-     * @var int
-     */
     public $boardID = 0;
-    
-    /**
-     * create threads automatically
-     * @var bool
-     */
     public $createThreads = true;
-    
-    /**
-     * convert timezone
-     * @var bool
-     */
     public $convertTimezone = true;
-    
-    /**
-     * auto mark past events as read
-     * @var bool
-     */
     public $autoMarkPastRead = true;
-    
-    /**
-     * mark updated events as unread
-     * @var bool
-     */
     public $markUpdatedUnread = true;
-    
-    /**
-     * maximum events per import
-     * @var int
-     */
     public $maxEvents = 100;
-    
-    /**
-     * log level
-     * @var string
-     */
     public $logLevel = 'info';
-    
-    /**
-     * Debug information
-     * @var array
-     */
     public $debugInfo = [];
     
-    /**
-     * @inheritDoc
-     */
     public function readData() {
         parent::readData();
         
@@ -113,9 +59,6 @@ class CalendarImportSettingsForm extends AbstractForm {
         $this->collectDebugInfo();
     }
     
-    /**
-     * Collects debug information.
-     */
     protected function collectDebugInfo() {
         $this->debugInfo = [
             'package' => null,
@@ -173,7 +116,8 @@ class CalendarImportSettingsForm extends AbstractForm {
         $eventClasses = [
             'calendar\\page\\EventPage',
             'calendar\\page\\CalendarPage',
-            'calendar\\data\\event\\EventAction'
+            'calendar\\data\\event\\EventAction',
+            'calendar\\data\\event\\date\\EventDateAction'
         ];
         foreach ($eventClasses as $class) {
             $this->debugInfo['eventClasses'][$class] = class_exists($class);
@@ -189,9 +133,6 @@ class CalendarImportSettingsForm extends AbstractForm {
         } catch (\Exception $e) {}
     }
     
-    /**
-     * @inheritDoc
-     */
     public function readFormParameters() {
         parent::readFormParameters();
         
@@ -205,9 +146,6 @@ class CalendarImportSettingsForm extends AbstractForm {
         if (isset($_POST['logLevel'])) $this->logLevel = StringUtil::trim($_POST['logLevel']);
     }
     
-    /**
-     * @inheritDoc
-     */
     public function save() {
         parent::save();
         
@@ -226,18 +164,12 @@ class CalendarImportSettingsForm extends AbstractForm {
         WCF::getTPL()->assign('success', true);
     }
     
-    /**
-     * Updates an option value.
-     */
     protected function updateOption($optionName, $optionValue) {
         $sql = "UPDATE wcf".WCF_N."_option SET optionValue = ? WHERE optionName = ?";
         $statement = WCF::getDB()->prepareStatement($sql);
         $statement->execute([$optionValue, $optionName]);
     }
     
-    /**
-     * @inheritDoc
-     */
     public function assignVariables() {
         parent::assignVariables();
         
