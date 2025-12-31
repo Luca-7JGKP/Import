@@ -3,7 +3,7 @@
     <category name="wcf.acp.menu">
         <item name="wcf.acp.menu.link.calendar.import"><![CDATA[Kalender-Import]]></item>
     </category>
-    <category name="wcf.acp.calendar.import">
+    <category name="wcf.acp">
         <item name="wcf.acp.calendar.import.settings"><![CDATA[Kalender-Import Einstellungen]]></item>
         <item name="wcf.acp.calendar.import.settings.description"><![CDATA[Konfigurieren Sie die Einstellungen für den iCal-Import.]]></item>
         <item name="wcf.acp.calendar.import.targetImportID"><![CDATA[Ziel-Import-ID]]></item>
@@ -20,6 +20,7 @@
         <item name="wcf.acp.calendar.import.convertTimezone.description"><![CDATA[Konvertiert die Zeitzone der importierten Events zur Server-Zeitzone.]]></item>
         <item name="wcf.acp.calendar.import.general"><![CDATA[Allgemein]]></item>
         <item name="wcf.acp.calendar.import.tracking"><![CDATA[Gelesen/Ungelesen-Tracking]]></item>
+        <item name="wcf.acp.calendar.import.import"><![CDATA[Import]]></item>
         <item name="wcf.acp.calendar.import.advanced"><![CDATA[Erweitert]]></item>
         <item name="wcf.acp.calendar.import.maxEvents"><![CDATA[Maximale Events]]></item>
         <item name="wcf.acp.calendar.import.maxEvents.description"><![CDATA[Maximale Anzahl Events pro Import.]]></item>
