@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/6.0/eventListener.xsd">
     <import>
-        <!-- Event-Listener für Kalender-Event-Seite (Gelesen-Markierung) -->
+        <!-- Event-Listener für Kalender-Event-Seite (Gelesen-Markierung) - WoltLab Kalender -->
         <eventlistener name="calendarEventPageView">
-            <eventclassname>calendar\page\EventPage</eventclassname>
+            <eventclassname>calendar\page\CalendarEventPage</eventclassname>
             <eventname>readData</eventname>
             <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
             <environment>user</environment>
@@ -11,10 +11,30 @@
             <nice>0</nice>
         </eventlistener>
         
-        <!-- Event-Listener für Kalender-Feed-Import -->
+        <!-- Event-Listener für Kalender-Event-Liste -->
+        <eventlistener name="calendarEventListPageView">
+            <eventclassname>calendar\page\CalendarPage</eventclassname>
+            <eventname>readData</eventname>
+            <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
+            <environment>user</environment>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
+        
+        <!-- Event-Listener für Kalender-Feed-Import Cronjob - WoltLab Kalender -->
         <eventlistener name="calendarFeedImport">
-            <eventclassname>calendar\system\cronjob\FeedImportCronjob</eventclassname>
+            <eventclassname>calendar\system\cronjob\CalendarFeedImportCronjob</eventclassname>
             <eventname>execute</eventname>
+            <listenerclassname>wcf\system\event\listener\ICalImportExtensionEventListener</listenerclassname>
+            <environment>all</environment>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
+        
+        <!-- Alternative: Event-Action für Event-Änderungen -->
+        <eventlistener name="calendarEventAction">
+            <eventclassname>calendar\data\event\EventAction</eventclassname>
+            <eventname>finalizeAction</eventname>
             <listenerclassname>wcf\system\event\listener\ICalImportExtensionEventListener</listenerclassname>
             <environment>all</environment>
             <inherit>0</inherit>
