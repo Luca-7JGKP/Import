@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/2019/language.xsd" languagecode="de">
+    <category name="wcf.acp.menu">
+        <item name="wcf.acp.menu.link.calendar.import"><![CDATA[Kalender-Import]]></item>
+    </category>
+    <category name="wcf.acp.calendar.import">
+        <item name="wcf.acp.calendar.import.settings"><![CDATA[Kalender-Import Einstellungen]]></item>
+        <item name="wcf.acp.calendar.import.settings.description"><![CDATA[Konfigurieren Sie die Einstellungen für den iCal-Import.]]></item>
+        <item name="wcf.acp.calendar.import.targetImportID"><![CDATA[Ziel-Import-ID]]></item>
+        <item name="wcf.acp.calendar.import.targetImportID.description"><![CDATA[Die ID des Imports aus der calendar1_event_import Tabelle.]]></item>
+        <item name="wcf.acp.calendar.import.boardID"><![CDATA[Forum-ID]]></item>
+        <item name="wcf.acp.calendar.import.boardID.description"><![CDATA[Das Forum, in dem Threads für neue Events erstellt werden.]]></item>
+        <item name="wcf.acp.calendar.import.createThreads"><![CDATA[Threads erstellen]]></item>
+        <item name="wcf.acp.calendar.import.createThreads.description"><![CDATA[Erstellt automatisch einen Thread für jedes importierte Event.]]></item>
+        <item name="wcf.acp.calendar.import.autoMarkPastEventsRead"><![CDATA[Vergangene Termine als gelesen markieren]]></item>
+        <item name="wcf.acp.calendar.import.autoMarkPastEventsRead.description"><![CDATA[Termine in der Vergangenheit werden automatisch als gelesen markiert.]]></item>
+        <item name="wcf.acp.calendar.import.markUpdatedAsUnread"><![CDATA[Aktualisierte Termine als ungelesen markieren]]></item>
+        <item name="wcf.acp.calendar.import.markUpdatedAsUnread.description"><![CDATA[Wenn ein Termin per iCal aktualisiert wird, wird er wieder als ungelesen markiert.]]></item>
+        <item name="wcf.acp.calendar.import.convertTimezone"><![CDATA[Zeitzone konvertieren]]></item>
+        <item name="wcf.acp.calendar.import.convertTimezone.description"><![CDATA[Konvertiert die Zeitzone der importierten Events zur Server-Zeitzone.]]></item>
+        <item name="wcf.acp.calendar.import.general"><![CDATA[Allgemein]]></item>
+        <item name="wcf.acp.calendar.import.tracking"><![CDATA[Gelesen/Ungelesen-Tracking]]></item>
+        <item name="wcf.acp.calendar.import.advanced"><![CDATA[Erweitert]]></item>
+        <item name="wcf.acp.calendar.import.maxEvents"><![CDATA[Maximale Events]]></item>
+        <item name="wcf.acp.calendar.import.maxEvents.description"><![CDATA[Maximale Anzahl Events pro Import.]]></item>
+        <item name="wcf.acp.calendar.import.logLevel"><![CDATA[Log-Level]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.description"><![CDATA[Detailgrad der Protokollierung.]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.error"><![CDATA[Nur Fehler]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.warning"><![CDATA[Warnungen]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.info"><![CDATA[Info]]></item>
+        <item name="wcf.acp.calendar.import.logLevel.debug"><![CDATA[Debug]]></item>
+    </category>
+</language>
