@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/vortex/eventListener.xsd">
+    <import>
+        <!-- 
+            Haupt-Event-Listener für iCal-Import 
+            FIX: Alle Funktionen in einem Listener
+            FIX v1.0.2: environment entfernt (gilt für alle Umgebungen)
+        -->
+        <eventlistener name="iCalImportExtension">
+            <eventclassname>wcf\action\ICalImportAction</eventclassname>
+            <eventname>beforeImport,afterImport,validateImport</eventname>
+            <listenerclassname>wcf\system\event\listener\ICalImportExtensionEventListener</listenerclassname>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
+        
+        <!-- 
+            Event-Listener für Kalender-Event-Ansichten
+            FIX: Markiert Events als gelesen wenn sie angesehen werden
+            FIX v1.0.2: environment entfernt (gilt für alle Umgebungen)
+        -->
+        <eventlistener name="calendarEventViewListener">
+            <eventclassname>wcf\action\CalendarEventAction</eventclassname>
+            <eventname>readData,show</eventname>
+            <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
+        
+        <!-- 
+            Event-Listener für Kalender-Event-Seiten
+            FIX: Alternative Listener-Registrierung für Page-Views
+            FIX v1.0.2: environment entfernt (gilt für alle Umgebungen)
+        -->
+        <eventlistener name="calendarEventPageViewListener">
+            <eventclassname>wcf\page\CalendarEventPage</eventclassname>
+            <eventname>readData,show</eventname>
+            <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
+        
+        <!-- 
+            WICHTIG: CalendarFeedImportExtensionEventListener wurde ENTFERNT
+            
+            Die folgende Konfiguration existiert NICHT MEHR:
+            
+            <eventlistener name="calendarFeedImportExtension">
+                <eventclassname>wcf\action\CalendarFeedAction</eventclassname>
+                <eventname>import</eventname>
+                <listenerclassname>wcf\system\event\listener\CalendarFeedImportExtensionEventListener</listenerclassname>
+            </eventlistener>
+            
+            Grund für die Entfernung:
+            1. CalendarFeedAction existiert nicht in Woltlab Suite
+            2. Der Event-Listener wurde nie ausgeführt
+            3. Alle Funktionen sind jetzt in ICalImportExtensionEventListener implementiert
+        -->
+    </import>
+</data>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/vortex/language.xsd" languagecode="de-informal">
+    <category name="wcf.acp.menu">
+        <item name="wcf.acp.menu.link.calendar.import"><![CDATA[Kalender Tracking]]></item>
+    </category>
+    
+    <category name="wcf.acp.option">
+        <!-- Kategorie-Titel -->
+        <item name="wcf.acp.option.category.calendar.import"><![CDATA[Kalender Tracking]]></item>
+        <item name="wcf.acp.option.category.calendar.import.description"><![CDATA[Konfiguriere das intelligente Gelesen/Ungelesen-Tracking für Kalender-Events.]]></item>
+        
+        <!-- Option-Labels und Beschreibungen -->
+        <item name="wcf.acp.option.calendar_import_target_import_id"><![CDATA[iCal-Import ID]]></item>
+        <item name="wcf.acp.option.calendar_import_target_import_id.description"><![CDATA[Die Import-ID aus der Tabelle calendar1_event_import, für die diese Einstellungen gelten sollen. 0 = Alle Imports.]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_default_board_id"><![CDATA[Standard-Forum (Board-ID)]]></item>
+        <item name="wcf.acp.option.calendar_import_default_board_id.description"><![CDATA[Die Board-ID des Forums, in dem automatisch Threads für importierte Events erstellt werden sollen.]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_create_threads"><![CDATA[Threads automatisch erstellen]]></item>
+        <item name="wcf.acp.option.calendar_import_create_threads.description"><![CDATA[Erstellt automatisch Forum-Threads für neu importierte Kalender-Events.]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_convert_timezone"><![CDATA[Zeitzone konvertieren]]></item>
+        <item name="wcf.acp.option.calendar_import_convert_timezone.description"><![CDATA[Konvertiert importierte Event-Zeiten in die Server-Zeitzone.]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_auto_mark_past_events_read"><![CDATA[Vergangene Events als gelesen markieren]]></item>
+        <item name="wcf.acp.option.calendar_import_auto_mark_past_events_read.description"><![CDATA[Events, die in der Vergangenheit liegen, werden automatisch als gelesen markiert.]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_mark_updated_as_unread"><![CDATA[Aktualisierte Events als ungelesen markieren]]></item>
+        <item name="wcf.acp.option.calendar_import_mark_updated_as_unread.description"><![CDATA[Wenn ein Event durch den Import aktualisiert wird, wird es wieder als ungelesen markiert.]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_max_events"><![CDATA[Maximale Events pro Import]]></item>
+        <item name="wcf.acp.option.calendar_import_max_events.description"><![CDATA[Maximale Anzahl von Events, die pro Import-Durchlauf verarbeitet werden (1-10000).]]></item>
+        
+        <item name="wcf.acp.option.calendar_import_log_level"><![CDATA[Log-Level]]></item>
+        <item name="wcf.acp.option.calendar_import_log_level.description"><![CDATA[Bestimmt, welche Ereignisse im Import-Log gespeichert werden.]]></item>
+        <item name="wcf.acp.option.calendar_import_log_level.error"><![CDATA[Nur Fehler]]></item>
+        <item name="wcf.acp.option.calendar_import_log_level.warning"><![CDATA[Warnungen und Fehler]]></item>
+        <item name="wcf.acp.option.calendar_import_log_level.info"><![CDATA[Informationen (Standard)]]></item>
+        <item name="wcf.acp.option.calendar_import_log_level.debug"><![CDATA[Debug (Alle Meldungen)]]></item>
+    </category>
+</language>

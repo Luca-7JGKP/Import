@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/vortex/page.xsd">
+    <import>
+        <page identifier="com.luca.calendar.import.Debug">
+            <pageType>system</pageType>
+            <controller>wcf\acp\page\CalendarImportDebugPage</controller>
+            <name language="de">Kalender Import Debug</name>
+            <name language="en">Calendar Import Debug</name>
+            <requireObjectID>0</requireObjectID>
+        </page>
+    </import>
+</data>

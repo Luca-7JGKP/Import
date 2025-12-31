@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/vortex/option.xsd">
+    <import>
+        <!-- 
+            Optionen für intelligentes Kalender-Tracking
+            Hinweis: iCal-Import wird über Woltlabs Standard calendar1_event_import verwaltet
+        -->
+        
+        <!-- Kategorie-Definition für Kalender-Tracking -->
+        <categories>
+            <category name="calendar.import">
+                <parent>general</parent>
+            </category>
+        </categories>
+        
+        <!-- Optionen für Kalender-Tracking -->
+        <options>
+            <!-- iCal Import ID - Welcher Import betroffen ist -->
+            <option name="calendar_import_target_import_id">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>0</defaultvalue>
+                <admindefaultvalue>0</admindefaultvalue>
+                <validationpattern>^\d+$</validationpattern>
+            </option>
+            
+            <!-- Standard-Board-ID für Thread-Erstellung -->
+            <option name="calendar_import_default_board_id">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>1</defaultvalue>
+                <admindefaultvalue>1</admindefaultvalue>
+                <validationpattern>^[1-9]\d*$</validationpattern>
+            </option>
+            
+            <!-- Thread-Erstellung aktivieren/deaktivieren -->
+            <option name="calendar_import_create_threads">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+                <admindefaultvalue>1</admindefaultvalue>
+            </option>
+            
+            <!-- Automatische Zeitzone-Konvertierung -->
+            <option name="calendar_import_convert_timezone">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+                <admindefaultvalue>1</admindefaultvalue>
+            </option>
+            
+            <!-- Vergangene Events automatisch als gelesen markieren -->
+            <option name="calendar_import_auto_mark_past_events_read">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+                <admindefaultvalue>1</admindefaultvalue>
+            </option>
+            
+            <!-- Aktualisierte Events als ungelesen markieren -->
+            <option name="calendar_import_mark_updated_as_unread">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>boolean</optiontype>
+                <defaultvalue>1</defaultvalue>
+                <admindefaultvalue>1</admindefaultvalue>
+            </option>
+            
+            <!-- Log-Level für Import-Vorgänge -->
+            <option name="calendar_import_log_level">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>select</optiontype>
+                <defaultvalue>error</defaultvalue>
+                <admindefaultvalue>warning</admindefaultvalue>
+                <selectoptions>debug
+info
+warning
+error</selectoptions>
+            </option>
+            
+            <!-- Maximale Anzahl Events pro Import -->
+            <option name="calendar_import_max_events">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>1000</defaultvalue>
+                <admindefaultvalue>1000</admindefaultvalue>
+                <validationpattern>^[1-9]\d*$</validationpattern>
+            </option>
+        </options>
+    </import>
+</data>
