@@ -148,12 +148,12 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         $initialVisitTime = 0; // Standard: ungelesen
         
         // Fall 1: Bei Updates und wenn CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD aktiv ist
-        // -> Event als ungelesen markieren (lastVisitTime = 0)
+        // -> Event als ungelesen markieren (lastVisitTime = 0) - hat Vorrang vor Fall 2
         if ($isUpdate && defined('CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD') && CALENDAR_IMPORT_MARK_UPDATED_AS_UNREAD) {
             $initialVisitTime = 0;
         }
         // Fall 2: Vergangene Events automatisch als gelesen markieren wenn Option aktiv
-        // -> nur wenn es KEIN Update ist oder die Update-Option nicht aktiv ist
+        // -> wird nur angewendet wenn Fall 1 nicht greift (kein Update oder Update-Option deaktiviert)
         elseif ($startTime < TIME_NOW && defined('CALENDAR_IMPORT_AUTO_MARK_PAST_EVENTS_READ') && CALENDAR_IMPORT_AUTO_MARK_PAST_EVENTS_READ) {
             $initialVisitTime = TIME_NOW;
         }
