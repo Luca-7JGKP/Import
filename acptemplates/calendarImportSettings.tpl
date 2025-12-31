@@ -8,11 +8,11 @@
 </header>
 
 {if $success|isset}
-    <p class="success">{lang}wcf.global.success.edit{/lang}</p>
+    <woltlab-core-notice type="success">{lang}wcf.global.success.edit{/lang}</woltlab-core-notice>
 {/if}
 
 {if $errorField}
-    <p class="error">{lang}wcf.global.form.error{/lang}</p>
+    <woltlab-core-notice type="error">{lang}wcf.global.form.error{/lang}</woltlab-core-notice>
 {/if}
 
 <form method="post" action="{link controller='CalendarImportSettings'}{/link}">
@@ -130,7 +130,7 @@
     
     <div class="formSubmit">
         <input type="submit" value="{lang}wcf.global.button.submit{/lang}" accesskey="s">
-        {@SECURITY_TOKEN_INPUT_TAG}
+        {csrfToken}
     </div>
 </form>
 
