@@ -40,7 +40,7 @@
             <dt></dt>
             <dd>
                 <label>
-                    <input type="checkbox" name="autoMarkPastEventsRead" value="1"{if $autoMarkPastEventsRead} checked{/if}>
+                    <input type="checkbox" name="autoMarkPastRead" value="1"{if $autoMarkPastRead} checked{/if}>
                     {lang}wcf.acp.calendar.import.autoMarkPastEventsRead{/lang}
                 </label>
                 <small>{lang}wcf.acp.calendar.import.autoMarkPastEventsRead.description{/lang}</small>
@@ -51,7 +51,7 @@
             <dt></dt>
             <dd>
                 <label>
-                    <input type="checkbox" name="markUpdatedAsUnread" value="1"{if $markUpdatedAsUnread} checked{/if}>
+                    <input type="checkbox" name="markUpdatedUnread" value="1"{if $markUpdatedUnread} checked{/if}>
                     {lang}wcf.acp.calendar.import.markUpdatedAsUnread{/lang}
                 </label>
                 <small>{lang}wcf.acp.calendar.import.markUpdatedAsUnread.description{/lang}</small>
@@ -65,7 +65,7 @@
         <dl{if $errorField == 'boardID'} class="formError"{/if}>
             <dt><label for="boardID">{lang}wcf.acp.calendar.import.boardID{/lang}</label></dt>
             <dd>
-                <input type="number" id="boardID" name="boardID" value="{$boardID}" class="short" min="1">
+                <input type="number" id="boardID" name="boardID" value="{$boardID}" class="short" min="0">
                 <small>{lang}wcf.acp.calendar.import.boardID.description{/lang}</small>
                 {if $errorField == 'boardID'}
                     <small class="innerError">
@@ -101,18 +101,23 @@
     <section class="section">
         <h2 class="sectionTitle">{lang}wcf.acp.calendar.import.advanced{/lang}</h2>
         
-        <dl>
+        <dl{if $errorField == 'maxEvents'} class="formError"{/if}>
             <dt><label for="maxEvents">{lang}wcf.acp.calendar.import.maxEvents{/lang}</label></dt>
             <dd>
                 <input type="number" id="maxEvents" name="maxEvents" value="{$maxEvents}" class="short" min="1" max="10000">
                 <small>{lang}wcf.acp.calendar.import.maxEvents.description{/lang}</small>
+                {if $errorField == 'maxEvents'}
+                    <small class="innerError">
+                        {lang}wcf.acp.calendar.import.maxEvents.error.{@$errorType}{/lang}
+                    </small>
+                {/if}
             </dd>
         </dl>
         
-        <dl>
+        <dl{if $errorField == 'logLevel'} class="formError"{/if}>
             <dt><label for="logLevel">{lang}wcf.acp.calendar.import.logLevel{/lang}</label></dt>
             <dd>
-                <select name="logLevel" id="logLevel">
+                <select id="logLevel" name="logLevel">
                     <option value="error"{if $logLevel == 'error'} selected{/if}>{lang}wcf.acp.calendar.import.logLevel.error{/lang}</option>
                     <option value="warning"{if $logLevel == 'warning'} selected{/if}>{lang}wcf.acp.calendar.import.logLevel.warning{/lang}</option>
                     <option value="info"{if $logLevel == 'info'} selected{/if}>{lang}wcf.acp.calendar.import.logLevel.info{/lang}</option>
@@ -125,7 +130,7 @@
     
     <div class="formSubmit">
         <input type="submit" value="{lang}wcf.global.button.submit{/lang}" accesskey="s">
-        {csrfToken}
+        {@SECURITY_TOKEN_INPUT_TAG}
     </div>
 </form>
 
