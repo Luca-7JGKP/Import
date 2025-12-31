@@ -8,82 +8,86 @@
 set -e
 
 PLUGIN_NAME="com.lucaberwind.wcf.calendar.import"
-VERSION="1.2.0"
+VERSION="1.2.1"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🔨 Building WoltLab Plugin: $PLUGIN_NAME v$VERSION"
 echo "=================================================="
 
-# Arbeitsverzeichnis erstellen
-BUILD_DIR="build"
+# Temporäres Build-Verzeichnis erstellen
+BUILD_DIR="$SCRIPT_DIR/build_temp"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-echo "📁 Erstelle TAR-Archive..."
+cd "$SCRIPT_DIR"
+
+echo "📁 Erstelle TAR-Archive für Unterverzeichnisse..."
 
 # files.tar erstellen (PHP-Dateien)
 if [ -d "files" ]; then
-    cd files
-    tar -cvf "../$BUILD_DIR/files.tar" .
-    cd ..
+    tar -cf "$BUILD_DIR/files.tar" -C files .
     echo "✅ files.tar erstellt"
 else
     echo "⚠️  Verzeichnis 'files' nicht gefunden"
 fi
 
-# acptemplates.tar erstellen (Smarty-Templates)
+# acptemplates.tar erstellen (ACP-Templates)
 if [ -d "acptemplates" ]; then
-    cd acptemplates
-    tar -cvf "../$BUILD_DIR/acptemplates.tar" .
-    cd ..
+    tar -cf "$BUILD_DIR/acptemplates.tar" -C acptemplates .
     echo "✅ acptemplates.tar erstellt"
 else
     echo "⚠️  Verzeichnis 'acptemplates' nicht gefunden"
 fi
 
-# templates.tar erstellen (falls vorhanden)
+# templates.tar erstellen (Frontend-Templates, falls vorhanden)
 if [ -d "templates" ]; then
-    cd templates
-    tar -cvf "../$BUILD_DIR/templates.tar" .
-    cd ..
+    tar -cf "$BUILD_DIR/templates.tar" -C templates .
     echo "✅ templates.tar erstellt"
 fi
 
 echo ""
-echo "📦 Erstelle finales Plugin-Paket..."
+echo "📦 Sammle Plugin-Dateien..."
 
-# Dateien ins Build-Verzeichnis kopieren
-cp package.xml "$BUILD_DIR/" 2>/dev/null || echo "⚠️  package.xml nicht gefunden"
-cp eventListener.xml "$BUILD_DIR/" 2>/dev/null || true
-cp options.xml "$BUILD_DIR/" 2>/dev/null || true
-cp install.sql "$BUILD_DIR/" 2>/dev/null || true
+# Kopiere Hauptdateien ins Build-Verzeichnis
+cp package.xml "$BUILD_DIR/" || { echo "❌ FEHLER: package.xml nicht gefunden!"; exit 1; }
+[ -f "eventListener.xml" ] && cp eventListener.xml "$BUILD_DIR/"
+[ -f "options.xml" ] && cp options.xml "$BUILD_DIR/"
+[ -f "acpMenu.xml" ] && cp acpMenu.xml "$BUILD_DIR/"
+[ -f "install.sql" ] && cp install.sql "$BUILD_DIR/"
+[ -f "uninstall.sql" ] && cp uninstall.sql "$BUILD_DIR/"
 
-# Sprachdateien kopieren
+# Sprachdateien kopieren (als Verzeichnis)
 if [ -d "language" ]; then
     mkdir -p "$BUILD_DIR/language"
     cp language/*.xml "$BUILD_DIR/language/" 2>/dev/null || true
     echo "✅ Sprachdateien kopiert"
 fi
 
-# Finales TAR-Paket erstellen
+echo ""
+echo "📦 Erstelle finales Plugin-Paket..."
+
+# Finales TAR-Paket erstellen - WICHTIG: package.xml muss im Root sein!
 cd "$BUILD_DIR"
-tar -cvf "../${PLUGIN_NAME}.tar" .
-cd ..
+tar -cf "$SCRIPT_DIR/${PLUGIN_NAME}.tar" *
+
+cd "$SCRIPT_DIR"
+
+# Aufräumen
+rm -rf "$BUILD_DIR"
 
 echo ""
 echo "=================================================="
 echo "✅ Build erfolgreich!"
 echo ""
-echo "📦 Plugin-Paket erstellt: ${PLUGIN_NAME}.tar"
+echo "📦 Plugin-Paket: ${PLUGIN_NAME}.tar"
 echo ""
 echo "Installation:"
-echo "1. Lade die Datei '${PLUGIN_NAME}.tar' herunter"
-echo "2. Gehe zu ACP → Pakete → Paket installieren"
-echo "3. Wähle die TAR-Datei aus und installiere"
+echo "1. Gehe zu ACP → Pakete → Paket installieren"
+echo "2. Wähle '${PLUGIN_NAME}.tar' aus"
+echo "3. Installieren klicken"
 echo "=================================================="
 
-# Aufräumen (optional - auskommentieren um Build-Verzeichnis zu behalten)
-# rm -rf "$BUILD_DIR"
-
+# Zeige Inhalt des Pakets zur Überprüfung
 echo ""
-echo "📁 Build-Verzeichnis: $BUILD_DIR/"
-ls -la "$BUILD_DIR/"
+echo "📋 Paketinhalt:"
+tar -tvf "${PLUGIN_NAME}.tar"
