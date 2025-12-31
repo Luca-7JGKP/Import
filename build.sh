@@ -50,17 +50,14 @@ echo "📦 Sammle Plugin-Dateien..."
 
 # Kopiere Hauptdateien ins Build-Verzeichnis
 cp package.xml "$BUILD_DIR/" || { echo "❌ FEHLER: package.xml nicht gefunden!"; exit 1; }
-[ -f "eventListener.xml" ] && cp eventListener.xml "$BUILD_DIR/"
-[ -f "options.xml" ] && cp options.xml "$BUILD_DIR/"
-[ -f "acpMenu.xml" ] && cp acpMenu.xml "$BUILD_DIR/"
 [ -f "install.sql" ] && cp install.sql "$BUILD_DIR/"
 [ -f "uninstall.sql" ] && cp uninstall.sql "$BUILD_DIR/"
 
-# Sprachdateien kopieren (als Verzeichnis)
-if [ -d "language" ]; then
-    mkdir -p "$BUILD_DIR/language"
-    cp language/*.xml "$BUILD_DIR/language/" 2>/dev/null || true
-    echo "✅ Sprachdateien kopiert"
+# XML-Konfigurationsdateien kopieren (als xml/ Verzeichnis für WoltLab)
+if [ -d "xml" ]; then
+    mkdir -p "$BUILD_DIR/xml"
+    cp xml/*.xml "$BUILD_DIR/xml/" 2>/dev/null || true
+    echo "✅ XML-Konfigurationsdateien kopiert"
 fi
 
 echo ""

@@ -1,0 +1,7 @@
+# Build artifacts
+com.lucaberwind.wcf.calendar.import.tar
+build_temp/
+*.tar
+
+# Keep the versioned release tar.gz
+!luca-calendar-import-*.tar.gz

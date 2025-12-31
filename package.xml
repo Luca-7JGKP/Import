@@ -18,19 +18,29 @@
     </requiredpackages>
     
     <instructions type="install">
+        <instruction type="language">xml/language.xml</instruction>
+        <instruction type="language">xml/language_de_informal.xml</instruction>
+        <instruction type="eventListener">xml/eventListener.xml</instruction>
+        <instruction type="option">xml/option.xml</instruction>
+        <instruction type="acpMenu">xml/acpMenu.xml</instruction>
+        <instruction type="page">xml/page.xml</instruction>
+        <instruction type="sql">install.sql</instruction>
         <instruction type="file">files.tar</instruction>
-        <instruction type="template">acptemplates.tar</instruction>
-        <instruction type="language">language/*.xml</instruction>
-        <instruction type="eventListener">eventListener.xml</instruction>
-        <instruction type="option">options.xml</instruction>
-        <instruction type="acpMenu">acpMenu.xml</instruction>
+        <instruction type="acpTemplate">acptemplates.tar</instruction>
     </instructions>
     
-    <instructions type="update" fromversion="1.2.0">
+    <instructions type="update" fromversion="*">
         <instruction type="file">files.tar</instruction>
-        <instruction type="template">acptemplates.tar</instruction>
-        <instruction type="language">language/*.xml</instruction>
-        <instruction type="eventListener">eventListener.xml</instruction>
-        <instruction type="option">options.xml</instruction>
+        <instruction type="acpTemplate">acptemplates.tar</instruction>
+        <instruction type="eventListener">xml/eventListener.xml</instruction>
+        <instruction type="option">xml/option.xml</instruction>
+        <instruction type="acpMenu">xml/acpMenu.xml</instruction>
+        <instruction type="language">xml/language.xml</instruction>
+        <instruction type="language">xml/language_de_informal.xml</instruction>
+        <instruction type="page">xml/page.xml</instruction>
+    </instructions>
+    
+    <instructions type="uninstall">
+        <instruction type="sql">uninstall.sql</instruction>
     </instructions>
 </package>
