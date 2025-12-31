@@ -1,18 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/2019/eventListener.xsd">
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/6.0/eventListener.xsd">
     <import>
-        <eventlistener name="icalImportExtension">
-            <eventclassname>wcf\system\calendar\ICalImporter</eventclassname>
-            <eventname>beforeImport,afterImport,validateImport</eventname>
-            <listenerclassname>wcf\system\event\listener\ICalImportExtensionEventListener</listenerclassname>
-            <environment>all</environment>
-        </eventlistener>
-        
-        <eventlistener name="calendarEventView">
-            <eventclassname>calendar\page\CalendarEventPage</eventclassname>
-            <eventname>readData,show</eventname>
+        <!-- Event-Listener für Kalender-Event-Seite (Gelesen-Markierung) -->
+        <eventlistener name="calendarEventPageView">
+            <eventclassname>calendar\page\EventPage</eventclassname>
+            <eventname>readData</eventname>
             <listenerclassname>wcf\system\event\listener\CalendarEventViewListener</listenerclassname>
             <environment>user</environment>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
+        
+        <!-- Event-Listener für Kalender-Feed-Import -->
+        <eventlistener name="calendarFeedImport">
+            <eventclassname>calendar\system\cronjob\FeedImportCronjob</eventclassname>
+            <eventname>execute</eventname>
+            <listenerclassname>wcf\system\event\listener\ICalImportExtensionEventListener</listenerclassname>
+            <environment>all</environment>
+            <inherit>0</inherit>
+            <nice>0</nice>
         </eventlistener>
     </import>
 </data>
