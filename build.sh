@@ -8,7 +8,7 @@
 set -e
 
 PLUGIN_NAME="com.lucaberwind.wcf.calendar.import"
-VERSION="1.2.1"
+VERSION="1.3.2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🔨 Building WoltLab Plugin: $PLUGIN_NAME v$VERSION"
@@ -66,7 +66,7 @@ fi
 echo ""
 echo "📦 Erstelle finales Plugin-Paket..."
 
-# Finales TAR-Paket erstellen - WICHTIG: package.xml muss im Root sein!
+# Finales TAR-Paket erstellen
 cd "$BUILD_DIR"
 tar -cf "$SCRIPT_DIR/${PLUGIN_NAME}.tar" *
 
@@ -85,9 +85,10 @@ echo "Installation:"
 echo "1. Gehe zu ACP → Pakete → Paket installieren"
 echo "2. Wähle '${PLUGIN_NAME}.tar' aus"
 echo "3. Installieren klicken"
+echo "4. Cache leeren: ACP → Übersicht → Cache → Alles löschen"
 echo "=================================================="
 
-# Zeige Inhalt des Pakets zur Überprüfung
+# Zeige Inhalt des Pakets
 echo ""
 echo "📋 Paketinhalt:"
-tar -tvf "${PLUGIN_NAME}.tar"
+tar -tf "${PLUGIN_NAME}.tar"
