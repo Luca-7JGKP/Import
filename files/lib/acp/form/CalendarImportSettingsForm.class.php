@@ -11,7 +11,7 @@ use wcf\util\StringUtil;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.6.2
+ * @version 1.6.3
  */
 class CalendarImportSettingsForm extends AbstractForm {
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
@@ -82,7 +82,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 30,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.2'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.3'
             ]);
             $icsContent = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -177,8 +177,13 @@ class CalendarImportSettingsForm extends AbstractForm {
             ];
         }
         
-        // Check calendar tables
-        $possibleTables = ['calendar1_calendar', 'wcf1_calendar', 'calendar1_event', 'wcf1_calendar_event'];
+        // Check calendar tables - use dynamic table prefix
+        $possibleTables = [
+            'calendar'.WCF_N.'_calendar',
+            'wcf'.WCF_N.'_calendar', 
+            'calendar'.WCF_N.'_event', 
+            'wcf'.WCF_N.'_calendar_event'
+        ];
         foreach ($possibleTables as $table) {
             try {
                 $sql = "SHOW TABLES LIKE ?";
@@ -190,15 +195,48 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         }
         
-        // Calendars
-        try {
-            $sql = "SELECT calendarID FROM calendar1_calendar ORDER BY calendarID";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            while ($row = $statement->fetchArray()) {
-                $this->debugInfo['calendars'][] = $row;
+        // Calendars - try multiple table names with dynamic prefix
+        $calendarTableNames = [
+            'calendar'.WCF_N.'_calendar',
+            'wcf'.WCF_N.'_calendar'
+        ];
+        
+        foreach ($calendarTableNames as $tableName) {
+            try {
+                // First check if table exists
+                $sql = "SHOW TABLES LIKE ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$tableName]);
+                if ($statement->fetchColumn() !== false) {
+                    // Table exists, query calendars
+                    $sql = "SELECT calendarID, title FROM ".$tableName." ORDER BY calendarID";
+                    $statement = WCF::getDB()->prepareStatement($sql);
+                    $statement->execute();
+                    while ($row = $statement->fetchArray()) {
+                        $this->debugInfo['calendars'][] = $row;
+                    }
+                    break; // Found calendars, stop searching
+                }
+            } catch (\Exception $e) {
+                // Try next table name
             }
-        } catch (\Exception $e) {}
+        }
+        
+        // If still no calendars found, try WoltLab Calendar API
+        if (empty($this->debugInfo['calendars'])) {
+            try {
+                if (class_exists('calendar\\data\\calendar\\CalendarList')) {
+                    $calendarList = new \calendar\data\calendar\CalendarList();
+                    $calendarList->readObjects();
+                    foreach ($calendarList->getObjects() as $calendar) {
+                        $this->debugInfo['calendars'][] = [
+                            'calendarID' => $calendar->calendarID,
+                            'title' => $calendar->title
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {}
+        }
         
         // Cronjobs
         try {
@@ -244,7 +282,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.2'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.3'
             ]);
             $content = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
