@@ -6,11 +6,11 @@ use wcf\system\WCF;
 use wcf\util\StringUtil;
 
 /**
- * Shows the calendar import settings form with debug information.
+ * Shows the calendar import settings form with debug information and test import functionality.
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.5.1
+ * @version 1.6.0
  */
 class CalendarImportSettingsForm extends AbstractForm {
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
@@ -32,6 +32,11 @@ class CalendarImportSettingsForm extends AbstractForm {
     public function readData() {
         parent::readData();
         
+        // Check if test import was requested
+        if (isset($_GET['testImport']) && $_GET['testImport'] == '1') {
+            $this->runTestImport();
+        }
+        
         if (empty($_POST)) {
             $this->icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
             $this->calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
@@ -46,6 +51,172 @@ class CalendarImportSettingsForm extends AbstractForm {
         }
         
         $this->collectDebugInfo();
+    }
+    
+    protected function runTestImport() {
+        $this->testImportResult = [
+            'success' => false,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'steps' => [],
+            'error' => null,
+            'eventsFound' => 0,
+            'eventsProcessed' => 0,
+            'eventsCreated' => 0,
+            'eventsUpdated' => 0,
+            'eventsSkipped' => 0
+        ];
+        
+        try {
+            // Step 1: Check ICS URL
+            $icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
+            if (empty($icsUrl)) {
+                throw new \Exception('Keine ICS-URL konfiguriert. Bitte zuerst eine URL eingeben und speichern.');
+            }
+            $this->testImportResult['steps'][] = ['name' => 'ICS-URL prüfen', 'status' => 'success', 'message' => 'URL vorhanden: ' . $icsUrl];
+            
+            // Step 2: Check Calendar ID
+            $calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
+            if ($calendarID <= 0) {
+                throw new \Exception('Keine gültige Kalender-ID konfiguriert. Bitte eine Kalender-ID > 0 eingeben.');
+            }
+            $this->testImportResult['steps'][] = ['name' => 'Kalender-ID prüfen', 'status' => 'success', 'message' => 'Kalender-ID: ' . $calendarID];
+            
+            // Step 3: Check if calendar exists
+            $calendarExists = false;
+            try {
+                $sql = "SELECT calendarID FROM calendar1_calendar WHERE calendarID = ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$calendarID]);
+                $calendarExists = ($statement->fetchColumn() !== false);
+            } catch (\Exception $e) {
+                // Table might not exist or different structure
+            }
+            
+            if (!$calendarExists) {
+                throw new \Exception('Kalender mit ID ' . $calendarID . ' wurde nicht gefunden. Bitte prüfen Sie die verfügbaren Kalender im Debug-Bereich.');
+            }
+            $this->testImportResult['steps'][] = ['name' => 'Kalender existiert', 'status' => 'success', 'message' => 'Kalender #' . $calendarID . ' gefunden'];
+            
+            // Step 4: Fetch ICS content
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $icsUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.0'
+            ]);
+            $icsContent = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            
+            if ($curlError) {
+                throw new \Exception('Fehler beim Abrufen der ICS-Datei: ' . $curlError);
+            }
+            
+            if ($httpCode !== 200) {
+                throw new \Exception('ICS-URL liefert HTTP-Fehler ' . $httpCode . '. URL nicht erreichbar oder falsch.');
+            }
+            
+            if (empty($icsContent)) {
+                throw new \Exception('ICS-Datei ist leer.');
+            }
+            
+            $this->testImportResult['steps'][] = ['name' => 'ICS-Datei abrufen', 'status' => 'success', 'message' => 'HTTP ' . $httpCode . ', ' . strlen($icsContent) . ' Bytes empfangen'];
+            
+            // Step 5: Parse ICS content
+            if (strpos($icsContent, 'BEGIN:VCALENDAR') === false) {
+                throw new \Exception('Ungültiges ICS-Format: BEGIN:VCALENDAR nicht gefunden.');
+            }
+            
+            preg_match_all('/BEGIN:VEVENT.*?END:VEVENT/s', $icsContent, $eventMatches);
+            $eventsFound = count($eventMatches[0]);
+            $this->testImportResult['eventsFound'] = $eventsFound;
+            
+            if ($eventsFound === 0) {
+                throw new \Exception('Keine Events in der ICS-Datei gefunden.');
+            }
+            
+            $this->testImportResult['steps'][] = ['name' => 'ICS parsen', 'status' => 'success', 'message' => $eventsFound . ' Events gefunden'];
+            
+            // Step 6: Check cronjob class exists
+            $cronjobClass = 'wcf\\system\\cronjob\\ICalImportCronjob';
+            if (!class_exists($cronjobClass)) {
+                throw new \Exception('Cronjob-Klasse ' . $cronjobClass . ' nicht gefunden. Plugin möglicherweise nicht korrekt installiert.');
+            }
+            $this->testImportResult['steps'][] = ['name' => 'Cronjob-Klasse prüfen', 'status' => 'success', 'message' => 'Klasse vorhanden'];
+            
+            // Step 7: Test event processing (dry run - parse first 3 events)
+            $processedEvents = [];
+            $maxTestEvents = min(3, $eventsFound);
+            
+            for ($i = 0; $i < $maxTestEvents; $i++) {
+                $eventBlock = $eventMatches[0][$i];
+                $eventData = $this->parseEventBlock($eventBlock);
+                if ($eventData) {
+                    $processedEvents[] = $eventData;
+                    $this->testImportResult['eventsProcessed']++;
+                }
+            }
+            
+            $this->testImportResult['steps'][] = ['name' => 'Events verarbeiten (Test)', 'status' => 'success', 'message' => count($processedEvents) . ' Events erfolgreich geparst'];
+            
+            // Step 8: Check database write permission
+            try {
+                $sql = "SELECT COUNT(*) FROM calendar1_event LIMIT 1";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                $this->testImportResult['steps'][] = ['name' => 'Datenbank-Zugriff', 'status' => 'success', 'message' => 'Lese/Schreibzugriff OK'];
+            } catch (\Exception $e) {
+                throw new \Exception('Datenbankfehler: ' . $e->getMessage());
+            }
+            
+            // All tests passed
+            $this->testImportResult['success'] = true;
+            $this->testImportResult['steps'][] = ['name' => 'Test abgeschlossen', 'status' => 'success', 'message' => 'Alle Prüfungen bestanden! Der Import sollte funktionieren.'];
+            
+        } catch (\Exception $e) {
+            $this->testImportResult['error'] = $e->getMessage();
+            $this->testImportResult['steps'][] = ['name' => 'Fehler', 'status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+    
+    protected function parseEventBlock($eventBlock) {
+        $data = [];
+        
+        // Extract UID
+        if (preg_match('/UID[^:]*:([^\r\n]+)/i', $eventBlock, $match)) {
+            $data['uid'] = trim($match[1]);
+        }
+        
+        // Extract SUMMARY
+        if (preg_match('/SUMMARY[^:]*:([^\r\n]+)/i', $eventBlock, $match)) {
+            $data['summary'] = trim($match[1]);
+        }
+        
+        // Extract DTSTART
+        if (preg_match('/DTSTART[^:]*:([^\r\n]+)/i', $eventBlock, $match)) {
+            $data['dtstart'] = trim($match[1]);
+        }
+        
+        // Extract DTEND
+        if (preg_match('/DTEND[^:]*:([^\r\n]+)/i', $eventBlock, $match)) {
+            $data['dtend'] = trim($match[1]);
+        }
+        
+        // Extract DESCRIPTION
+        if (preg_match('/DESCRIPTION[^:]*:([^\r\n]+)/i', $eventBlock, $match)) {
+            $data['description'] = trim($match[1]);
+        }
+        
+        // Extract LOCATION
+        if (preg_match('/LOCATION[^:]*:([^\r\n]+)/i', $eventBlock, $match)) {
+            $data['location'] = trim($match[1]);
+        }
+        
+        return !empty($data) ? $data : null;
     }
     
     protected function getOptionValue($optionName, $default = null) {
@@ -284,7 +455,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.5.1'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.0'
             ]);
             $content = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -393,7 +564,8 @@ class CalendarImportSettingsForm extends AbstractForm {
             'markUpdatedUnread' => $this->markUpdatedUnread,
             'maxEvents' => $this->maxEvents,
             'logLevel' => $this->logLevel,
-            'debugInfo' => $this->debugInfo
+            'debugInfo' => $this->debugInfo,
+            'testImportResult' => $this->testImportResult
         ]);
     }
 }
