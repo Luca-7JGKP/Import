@@ -2,6 +2,7 @@
 namespace wcf\system\event\listener;
 
 use wcf\system\event\listener\IParameterizedEventListener;
+use wcf\system\calendar\ReadStatusHandler;
 use wcf\system\WCF;
 
 /**
@@ -14,7 +15,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.4.0
+ * @version 1.5.0
  */
 class ICalImportExtensionEventListener implements IParameterizedEventListener {
     
@@ -157,23 +158,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
      * Wird verwendet für abgelaufene Events.
      */
     protected function markEventAsReadForAllUsers($eventID) {
-        $objectTypeID = $this->getCalendarEventObjectTypeID();
-        if (!$objectTypeID) {
-            return;
-        }
-        
-        try {
-            // Verwende INSERT...SELECT für effiziente Batch-Operation
-            $sql = "INSERT IGNORE INTO wcf".WCF_N."_tracked_visit 
-                    (objectTypeID, objectID, userID, visitTime)
-                    SELECT ?, ?, userID, ?
-                    FROM wcf".WCF_N."_user
-                    WHERE banned = 0 AND activationCode = 0";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$objectTypeID, $eventID, TIME_NOW]);
-        } catch (\Exception $e) {
-            // Fehler loggen
-        }
+        ReadStatusHandler::getInstance()->markAsReadForAll($eventID);
     }
     
     /**
@@ -181,41 +166,11 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
      * Löscht alle visit-Einträge für dieses Event.
      */
     protected function markEventAsUnreadForAll($eventID) {
-        try {
-            $objectTypeID = $this->getCalendarEventObjectTypeID();
-            if ($objectTypeID) {
-                $sql = "DELETE FROM wcf".WCF_N."_tracked_visit WHERE objectTypeID = ? AND objectID = ?";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute([$objectTypeID, $eventID]);
-            }
-        } catch (\Exception $e) {}
-        
-        // Legacy-Tabelle auch bereinigen falls vorhanden
-        try {
-            $sql = "DELETE FROM wcf".WCF_N."_calendar_event_visit WHERE eventID = ?";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$eventID]);
-        } catch (\Exception $e) {}
+        ReadStatusHandler::getInstance()->markAsUnreadForAll($eventID);
     }
     
     protected function deleteVisitRecords($eventID) {
-        $this->markEventAsUnreadForAll($eventID);
-    }
-    
-    protected function getCalendarEventObjectTypeID() {
-        static $objectTypeID = null;
-        if ($objectTypeID === null) {
-            try {
-                $sql = "SELECT objectTypeID FROM wcf".WCF_N."_object_type WHERE objectType = 'com.woltlab.calendar.event'";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute();
-                $row = $statement->fetchArray();
-                $objectTypeID = $row ? $row['objectTypeID'] : 0;
-            } catch (\Exception $e) {
-                $objectTypeID = 0;
-            }
-        }
-        return $objectTypeID ?: null;
+        ReadStatusHandler::getInstance()->deleteForEvent($eventID);
     }
     
     protected function shouldAutoMarkPastAsRead() {
