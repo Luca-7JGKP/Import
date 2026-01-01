@@ -40,5 +40,15 @@
             <inherit>0</inherit>
             <nice>0</nice>
         </eventlistener>
+        
+        <!-- Event-Listener für Package-Installation (Cronjob-Scheduling) -->
+        <eventlistener name="packageInstallation">
+            <eventclassname>wcf\system\package\PackageInstallationDispatcher</eventclassname>
+            <eventname>postInstall</eventname>
+            <listenerclassname>wcf\system\event\listener\PackageInstallationEventListener</listenerclassname>
+            <environment>admin</environment>
+            <inherit>0</inherit>
+            <nice>0</nice>
+        </eventlistener>
     </import>
 </data>
