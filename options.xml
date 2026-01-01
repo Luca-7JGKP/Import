@@ -14,7 +14,13 @@
                 <defaultvalue></defaultvalue>
             </option>
             
-            <option name="calendar_import_calendar_id">
+            <option name="calendar_import_category_id">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>0</defaultvalue>
+            </option>
+            
+            <option name="calendar_import_target_import_id">
                 <categoryname>calendar.import</categoryname>
                 <optiontype>integer</optiontype>
                 <defaultvalue>0</defaultvalue>

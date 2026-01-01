@@ -11,7 +11,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 2.1.0
+ * @version 3.0.0
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -442,9 +442,14 @@ class ICalImportCronjob extends AbstractCronjob
             ]);
             
             // Use configured user ID for event creation
+            // Set participation settings according to requirements
+            $participationEndTime = $event['dtstart']; // Anmeldeschluss bei Event-Start
+            
             $sql = "INSERT INTO calendar1_event 
-                    (categoryID, userID, username, subject, message, time, enableHtml, eventDate, location)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    (categoryID, userID, username, subject, message, time, enableHtml, eventDate, location,
+                     enableParticipation, participationIsPublic, maxCompanions, participationIsChangeable,
+                     maxParticipants, participationEndTime, inviteOnly)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([
                 $categoryID ?: null,
@@ -455,7 +460,14 @@ class ICalImportCronjob extends AbstractCronjob
                 TIME_NOW,
                 0,
                 $eventDateData,
-                $event['location'] ?: ''
+                $event['location'] ?: '',
+                1,  // enableParticipation
+                1,  // participationIsPublic
+                99, // maxCompanions
+                1,  // participationIsChangeable
+                0,  // maxParticipants (unbegrenzt)
+                $participationEndTime,
+                0   // inviteOnly
             ]);
             
             $eventID = WCF::getDB()->getInsertID('calendar1_event', 'eventID');
@@ -495,16 +507,29 @@ class ICalImportCronjob extends AbstractCronjob
                 'repeatType' => ''
             ]);
             
+            // Update participation settings along with event data
+            $participationEndTime = $event['dtstart']; // Anmeldeschluss bei Event-Start
+            
             $sql = "UPDATE calendar1_event 
-                    SET subject = ?, message = ?, eventDate = ?, time = ?, location = ?
+                    SET subject = ?, message = ?, eventDate = ?, time = ?, location = ?,
+                        enableParticipation = ?, participationIsPublic = ?, maxCompanions = ?,
+                        participationIsChangeable = ?, maxParticipants = ?, participationEndTime = ?,
+                        inviteOnly = ?
                     WHERE eventID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([
                 $event['summary'],
                 $event['description'] ?: $event['summary'],
                 $eventDateData,
-                TIME_NOW,
+                TIME_NOW,  // Update time to mark as unread
                 $event['location'] ?: '',
+                1,  // enableParticipation
+                1,  // participationIsPublic
+                99, // maxCompanions
+                1,  // participationIsChangeable
+                0,  // maxParticipants (unbegrenzt)
+                $participationEndTime,
+                0,  // inviteOnly
                 $eventID
             ]);
             
