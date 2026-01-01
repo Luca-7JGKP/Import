@@ -8,14 +8,11 @@ CREATE TABLE IF NOT EXISTS wcf1_calendar_event_read_status (
     eventID INT(10) NOT NULL,
     userID INT(10) NOT NULL,
     isRead TINYINT(1) NOT NULL DEFAULT 0,
-    lastVisitTime INT(10) NOT NULL DEFAULT 0,
-    eventHash VARCHAR(64) NOT NULL DEFAULT '',
+    readTime INT(10) DEFAULT NULL,
     markedReadAutomatically TINYINT(1) NOT NULL DEFAULT 0,
     PRIMARY KEY (eventID, userID),
     KEY userID (userID),
-    KEY isRead (isRead),
-    KEY lastVisitTime (lastVisitTime),
-    KEY eventHash (eventHash)
+    KEY isRead (isRead)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tabelle für Import-Log

@@ -2,6 +2,7 @@
 namespace wcf\system\event\listener;
 
 use wcf\system\event\listener\IParameterizedEventListener;
+use wcf\system\calendar\ReadStatusHandler;
 use wcf\system\WCF;
 
 /**
@@ -10,11 +11,9 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.3.3
+ * @version 1.5.0
  */
 class CalendarEventViewListener implements IParameterizedEventListener {
-    
-    private const OBJECT_TYPE_ID = 1002;
     
     public function execute($eventObj, $className, $eventName, array &$parameters) {
         if (!WCF::getUser()->userID) {
@@ -98,14 +97,6 @@ class CalendarEventViewListener implements IParameterizedEventListener {
     }
     
     protected function markAsRead($eventID) {
-        try {
-            $sql = "INSERT INTO wcf".WCF_N."_tracked_visit (objectTypeID, objectID, userID, visitTime)
-                    VALUES (?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE visitTime = VALUES(visitTime)";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([self::OBJECT_TYPE_ID, $eventID, WCF::getUser()->userID, TIME_NOW]);
-        } catch (\Exception $e) {
-            // Silently fail
-        }
+        ReadStatusHandler::getInstance()->markAsRead($eventID);
     }
 }
