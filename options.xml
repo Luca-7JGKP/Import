@@ -20,6 +20,13 @@
                 <defaultvalue>0</defaultvalue>
             </option>
             
+            <option name="calendar_import_user_id">
+                <categoryname>calendar.import</categoryname>
+                <optiontype>integer</optiontype>
+                <defaultvalue>1</defaultvalue>
+                <minvalue>1</minvalue>
+            </option>
+            
             <option name="calendar_import_default_board_id">
                 <categoryname>calendar.import</categoryname>
                 <optiontype>integer</optiontype>
