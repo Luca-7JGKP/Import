@@ -10,7 +10,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.3.3
+ * @version 1.4.1
  */
 class CalendarEventViewListener implements IParameterizedEventListener {
     
