@@ -12,6 +12,8 @@
         <item name="wcf.acp.calendar.import.boardID.description"><![CDATA[Das Forum, in dem Threads für neue Events erstellt werden.]]></item>
         <item name="wcf.acp.calendar.import.createThreads"><![CDATA[Threads erstellen]]></item>
         <item name="wcf.acp.calendar.import.createThreads.description"><![CDATA[Erstellt automatisch einen Thread für jedes importierte Event.]]></item>
+        <item name="wcf.acp.calendar.import.userID"><![CDATA[Event-Ersteller]]></item>
+        <item name="wcf.acp.calendar.import.userID.description"><![CDATA[Der Benutzer, der als Ersteller der importierten Events angezeigt wird.]]></item>
         <item name="wcf.acp.calendar.import.autoMarkPastEventsRead"><![CDATA[Vergangene Termine als gelesen markieren]]></item>
         <item name="wcf.acp.calendar.import.autoMarkPastEventsRead.description"><![CDATA[Termine in der Vergangenheit werden automatisch als gelesen markiert.]]></item>
         <item name="wcf.acp.calendar.import.markUpdatedAsUnread"><![CDATA[Aktualisierte Termine als ungelesen markieren]]></item>
