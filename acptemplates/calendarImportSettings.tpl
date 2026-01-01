@@ -17,7 +17,23 @@
 
 <form method="post" action="{link controller='CalendarImportSettings'}{/link}">
     <section class="section">
-        <h2 class="sectionTitle">{lang}wcf.acp.calendar.import.import{/lang}</h2>
+        <h2 class="sectionTitle">ICS-Import Einstellungen</h2>
+        
+        <dl{if $errorField == 'icsUrl'} class="formError"{/if}>
+            <dt><label for="icsUrl">ICS-URL</label></dt>
+            <dd>
+                <input type="text" id="icsUrl" name="icsUrl" value="{$icsUrl}" class="long">
+                <small>URL zur ICS-Datei (z.B. https://example.com/calendar.ics)</small>
+            </dd>
+        </dl>
+        
+        <dl{if $errorField == 'calendarID'} class="formError"{/if}>
+            <dt><label for="calendarID">Ziel-Kalender-ID</label></dt>
+            <dd>
+                <input type="number" id="calendarID" name="calendarID" value="{$calendarID}" class="short" min="0">
+                <small>ID des Kalenders in den importiert werden soll</small>
+            </dd>
+        </dl>
         
         <dl{if $errorField == 'targetImportID'} class="formError"{/if}>
             <dt><label for="targetImportID">{lang}wcf.acp.calendar.import.targetImportID{/lang}</label></dt>
@@ -125,32 +141,128 @@
             </div>
         {/if}
         
-        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">2. Event-Listener ({$debugInfo.eventListeners|count})</h3>
-        {if $debugInfo.eventListeners|count > 0}
-            <div style="background: #143d1e; padding: 10px; border-radius: 4px; border-left: 3px solid #00ff88;">
-                {$debugInfo.eventListeners|count} Event-Listener registriert
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">2. ICS-URL Test</h3>
+        {if $debugInfo.icsTest}
+            {if $debugInfo.icsTest.reachable}
+                <div style="background: #143d1e; padding: 10px; border-radius: 4px; border-left: 3px solid #00ff88;">
+                    ✅ URL erreichbar | HTTP {$debugInfo.icsTest.statusCode} | {$debugInfo.icsTest.eventCount} Events gefunden
+                </div>
+                {if $debugInfo.icsTest.sampleEvents|count > 0}
+                    <p style="margin-top: 10px; color: #aaa;">Beispiel-Events:</p>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        {foreach from=$debugInfo.icsTest.sampleEvents item=eventTitle}
+                            <li style="color: #ccc;">{$eventTitle}</li>
+                        {/foreach}
+                    </ul>
+                {/if}
+            {else}
+                <div style="background: #3d1414; padding: 10px; border-radius: 4px; border-left: 3px solid #ff6b6b;">
+                    ❌ URL nicht erreichbar | HTTP {$debugInfo.icsTest.statusCode}
+                    {if $debugInfo.icsTest.error}<br>Fehler: {$debugInfo.icsTest.error}{/if}
+                </div>
+            {/if}
+        {else}
+            <div style="background: #3d3414; padding: 10px; border-radius: 4px; border-left: 3px solid #feca57;">
+                ⚠️ Keine ICS-URL konfiguriert
             </div>
-            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+        {/if}
+        
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">3. Verfügbare Kalender</h3>
+        {if $debugInfo.calendars|count > 0}
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                 <tr style="background: #0f3460;">
-                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Name</th>
-                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Event-Klasse</th>
-                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Event</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">ID</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Titel</th>
                 </tr>
-                {foreach from=$debugInfo.eventListeners item=listener}
+                {foreach from=$debugInfo.calendars item=cal}
                 <tr style="border-bottom: 1px solid #2d3a5c;">
-                    <td style="padding: 8px;">{$listener.listenerName}</td>
-                    <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$listener.eventClassName}</td>
-                    <td style="padding: 8px;">{$listener.eventName}</td>
+                    <td style="padding: 8px;">{$cal.calendarID}</td>
+                    <td style="padding: 8px;">{$cal.title}</td>
+                </tr>
+                {/foreach}
+            </table>
+        {else}
+            <div style="background: #3d3414; padding: 10px; border-radius: 4px; border-left: 3px solid #feca57;">
+                ⚠️ Keine Kalender gefunden
+            </div>
+        {/if}
+        
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">4. Cronjob-Status</h3>
+        {if $debugInfo.cronjobs|count > 0}
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <tr style="background: #0f3460;">
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Cronjob</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Status</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Letzter Lauf</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Nächster Lauf</th>
+                </tr>
+                {foreach from=$debugInfo.cronjobs item=cron}
+                <tr style="border-bottom: 1px solid #2d3a5c;">
+                    <td style="padding: 8px; font-family: monospace; font-size: 10px;">{$cron.cronjobClassName|truncate:40}</td>
+                    <td style="padding: 8px;">
+                        {if $cron.isDisabled}
+                            <span style="color: #ff6b6b;">🔴 Deaktiviert</span>
+                        {else}
+                            <span style="color: #00ff88;">🟢 Aktiv</span>
+                        {/if}
+                        {if $cron.failCount > 0}
+                            <span style="color: #feca57;">({$cron.failCount} Fehler)</span>
+                        {/if}
+                    </td>
+                    <td style="padding: 8px;">{if $cron.lastExec > 0}{$cron.lastExec|date:'Y-m-d H:i'}{else}Nie{/if}</td>
+                    <td style="padding: 8px;">{if $cron.nextExec > 0}{$cron.nextExec|date:'Y-m-d H:i'}{else}N/A{/if}</td>
                 </tr>
                 {/foreach}
             </table>
         {else}
             <div style="background: #3d1414; padding: 10px; border-radius: 4px; border-left: 3px solid #ff6b6b;">
-                Keine Event-Listener registriert! Plugin neu installieren.
+                ❌ Keine Cronjobs gefunden
             </div>
         {/if}
         
-        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">3. Plugin-Optionen</h3>
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">5. Cronjob PHP-Klassen</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <tr style="background: #0f3460;">
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Klasse</th>
+                <th style="padding: 8px; text-align: left; color: #00d4ff;">Status</th>
+            </tr>
+            {foreach from=$debugInfo.cronjobClasses key=className item=classData}
+            <tr style="border-bottom: 1px solid #2d3a5c;">
+                <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$className}</td>
+                <td style="padding: 8px;">
+                    {if $classData.exists}
+                        <span style="color: #00ff88;">✅ Vorhanden</span>
+                    {else}
+                        <span style="color: #ff6b6b;">❌ Fehlt</span>
+                    {/if}
+                </td>
+            </tr>
+            {/foreach}
+        </table>
+        
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">6. Letzte importierte Events</h3>
+        {if $debugInfo.recentImports|count > 0}
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <tr style="background: #0f3460;">
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">ID</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Titel</th>
+                    <th style="padding: 8px; text-align: left; color: #00d4ff;">Importiert</th>
+                </tr>
+                {foreach from=$debugInfo.recentImports item=evt}
+                <tr style="border-bottom: 1px solid #2d3a5c;">
+                    <td style="padding: 8px;">{$evt.eventID}</td>
+                    <td style="padding: 8px;">{$evt.subject}</td>
+                    <td style="padding: 8px;">{$evt.time|date:'Y-m-d H:i'}</td>
+                </tr>
+                {/foreach}
+            </table>
+        {else}
+            <div style="background: #3d3414; padding: 10px; border-radius: 4px; border-left: 3px solid #feca57;">
+                ⚠️ Noch keine Events importiert
+            </div>
+        {/if}
+        
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">7. Plugin-Optionen</h3>
         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
             <tr style="background: #0f3460;">
                 <th style="padding: 8px; text-align: left; color: #00d4ff;">Option</th>
@@ -160,10 +272,10 @@
             {foreach from=$debugInfo.options key=optionName item=optionData}
             <tr style="border-bottom: 1px solid #2d3a5c;">
                 <td style="padding: 8px; font-family: monospace;">{$optionName}</td>
-                <td style="padding: 8px;">{$optionData.value}</td>
+                <td style="padding: 8px;">{$optionData.value|truncate:50}</td>
                 <td style="padding: 8px;">
                     {if $optionData.constantDefined}
-                        <span style="color: #00ff88;">{$optionData.constantValue}</span>
+                        <span style="color: #00ff88;">{$optionData.constantValue|truncate:50}</span>
                     {else}
                         <span style="color: #ff6b6b;">Nicht definiert</span>
                     {/if}
@@ -172,47 +284,18 @@
             {/foreach}
         </table>
         
-        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">4. Listener PHP-Klassen</h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-            <tr style="background: #0f3460;">
-                <th style="padding: 8px; text-align: left; color: #00d4ff;">Klasse</th>
-                <th style="padding: 8px; text-align: left; color: #00d4ff;">Status</th>
-            </tr>
-            {foreach from=$debugInfo.listenerClasses key=className item=classData}
-            <tr style="border-bottom: 1px solid #2d3a5c;">
-                <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$className}</td>
-                <td style="padding: 8px;">
-                    {if $classData.exists}
-                        <span style="color: #00ff88;">Vorhanden</span>
-                    {else}
-                        <span style="color: #ff6b6b;">Fehlt</span>
-                    {/if}
-                </td>
-            </tr>
-            {/foreach}
-        </table>
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">8. Event-Listener ({$debugInfo.eventListeners|count})</h3>
+        {if $debugInfo.eventListeners|count > 0}
+            <div style="background: #143d1e; padding: 10px; border-radius: 4px; border-left: 3px solid #00ff88;">
+                {$debugInfo.eventListeners|count} Event-Listener registriert
+            </div>
+        {else}
+            <div style="background: #3d1414; padding: 10px; border-radius: 4px; border-left: 3px solid #ff6b6b;">
+                Keine Event-Listener registriert!
+            </div>
+        {/if}
         
-        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">5. WoltLab Kalender-Klassen</h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-            <tr style="background: #0f3460;">
-                <th style="padding: 8px; text-align: left; color: #00d4ff;">Klasse</th>
-                <th style="padding: 8px; text-align: left; color: #00d4ff;">Status</th>
-            </tr>
-            {foreach from=$debugInfo.eventClasses key=className item=exists}
-            <tr style="border-bottom: 1px solid #2d3a5c;">
-                <td style="padding: 8px; font-family: monospace; font-size: 11px;">{$className}</td>
-                <td style="padding: 8px;">
-                    {if $exists}
-                        <span style="color: #00ff88;">Vorhanden</span>
-                    {else}
-                        <span style="color: #feca57;">Nicht gefunden</span>
-                    {/if}
-                </td>
-            </tr>
-            {/foreach}
-        </table>
-        
-        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">6. Installierte Kalender-Pakete</h3>
+        <h3 style="color: #00d4ff; margin: 20px 0 10px 0;">9. Installierte Kalender-Pakete</h3>
         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
             <tr style="background: #0f3460;">
                 <th style="padding: 8px; text-align: left; color: #00d4ff;">Paket</th>
