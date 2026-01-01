@@ -10,12 +10,14 @@ use wcf\util\StringUtil;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.3.2
+ * @version 1.5.0
  */
 class CalendarImportSettingsForm extends AbstractForm {
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
     public $neededPermissions = [];
     
+    public $icsUrl = '';
+    public $calendarID = 0;
     public $targetImportID = 0;
     public $boardID = 0;
     public $createThreads = true;
@@ -25,11 +27,18 @@ class CalendarImportSettingsForm extends AbstractForm {
     public $maxEvents = 100;
     public $logLevel = 'info';
     public $debugInfo = [];
+    public $testImportResult = null;
     
     public function readData() {
         parent::readData();
         
         if (empty($_POST)) {
+            if (defined('CALENDAR_IMPORT_ICS_URL')) {
+                $this->icsUrl = CALENDAR_IMPORT_ICS_URL;
+            }
+            if (defined('CALENDAR_IMPORT_CALENDAR_ID')) {
+                $this->calendarID = CALENDAR_IMPORT_CALENDAR_ID;
+            }
             if (defined('CALENDAR_IMPORT_TARGET_IMPORT_ID')) {
                 $this->targetImportID = CALENDAR_IMPORT_TARGET_IMPORT_ID;
             }
@@ -67,9 +76,14 @@ class CalendarImportSettingsForm extends AbstractForm {
             'options' => [],
             'listenerClasses' => [],
             'eventClasses' => [],
-            'calendarPackages' => []
+            'calendarPackages' => [],
+            'cronjobs' => [],
+            'icsTest' => null,
+            'calendars' => [],
+            'recentImports' => []
         ];
         
+        // Package info
         try {
             $sql = "SELECT * FROM wcf".WCF_N."_package WHERE package = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -79,6 +93,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             $this->debugInfo['package'] = null;
         }
         
+        // Event listeners
         if ($this->debugInfo['package']) {
             try {
                 $sql = "SELECT * FROM wcf".WCF_N."_event_listener WHERE packageID = ?";
@@ -90,6 +105,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             } catch (\Exception $e) {}
         }
         
+        // Options
         try {
             $sql = "SELECT optionName, optionValue FROM wcf".WCF_N."_option WHERE optionName LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -104,6 +120,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         } catch (\Exception $e) {}
         
+        // Listener classes
         $listenerClasses = [
             'wcf\\system\\event\\listener\\ICalImportExtensionEventListener',
             'wcf\\system\\event\\listener\\CalendarEventViewListener'
@@ -116,6 +133,21 @@ class CalendarImportSettingsForm extends AbstractForm {
             ];
         }
         
+        // Cronjob classes
+        $cronjobClasses = [
+            'wcf\\system\\cronjob\\ICalImportCronjob',
+            'wcf\\system\\cronjob\\FixTimezoneCronjob',
+            'wcf\\system\\cronjob\\MarkPastEventsReadCronjob'
+        ];
+        foreach ($cronjobClasses as $class) {
+            $exists = class_exists($class);
+            $this->debugInfo['cronjobClasses'][$class] = [
+                'exists' => $exists,
+                'file' => $exists ? (new \ReflectionClass($class))->getFileName() : null
+            ];
+        }
+        
+        // Calendar event classes
         $eventClasses = [
             'calendar\\page\\EventPage',
             'calendar\\page\\CalendarPage',
@@ -126,6 +158,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             $this->debugInfo['eventClasses'][$class] = class_exists($class);
         }
         
+        // Calendar packages
         try {
             $sql = "SELECT package, packageVersion FROM wcf".WCF_N."_package WHERE package LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -134,11 +167,111 @@ class CalendarImportSettingsForm extends AbstractForm {
                 $this->debugInfo['calendarPackages'][] = $row;
             }
         } catch (\Exception $e) {}
+        
+        // Available calendars
+        try {
+            $sql = "SELECT calendarID, title FROM calendar1_calendar ORDER BY calendarID";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute();
+            while ($row = $statement->fetchArray()) {
+                $this->debugInfo['calendars'][] = $row;
+            }
+        } catch (\Exception $e) {}
+        
+        // Cronjob status
+        try {
+            $sql = "SELECT cronjobID, cronjobClassName, isDisabled, lastExec, nextExec, failCount 
+                    FROM wcf".WCF_N."_cronjob 
+                    WHERE cronjobClassName LIKE ? OR cronjobClassName LIKE ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute(['%calendar%', '%ICal%']);
+            while ($row = $statement->fetchArray()) {
+                $this->debugInfo['cronjobs'][] = $row;
+            }
+        } catch (\Exception $e) {}
+        
+        // Recent imported events
+        try {
+            $sql = "SELECT eventID, subject, time, externalSource 
+                    FROM calendar1_event 
+                    WHERE externalSource IS NOT NULL AND externalSource != ''
+                    ORDER BY time DESC LIMIT 10";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute();
+            while ($row = $statement->fetchArray()) {
+                $this->debugInfo['recentImports'][] = $row;
+            }
+        } catch (\Exception $e) {}
+        
+        // Test ICS URL if configured
+        if (!empty($this->icsUrl)) {
+            $this->debugInfo['icsTest'] = $this->testIcsUrl($this->icsUrl);
+        }
+    }
+    
+    protected function testIcsUrl($url) {
+        $result = [
+            'url' => $url,
+            'reachable' => false,
+            'statusCode' => null,
+            'contentType' => null,
+            'eventCount' => 0,
+            'sampleEvents' => [],
+            'error' => null
+        ];
+        
+        try {
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.5.0'
+            ]);
+            $content = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            $result['statusCode'] = $httpCode;
+            $result['contentType'] = $contentType;
+            
+            if ($error) {
+                $result['error'] = $error;
+                return $result;
+            }
+            
+            if ($httpCode == 200 && $content) {
+                $result['reachable'] = true;
+                
+                // Count events
+                preg_match_all('/BEGIN:VEVENT/', $content, $matches);
+                $result['eventCount'] = count($matches[0]);
+                
+                // Get sample events
+                if (preg_match_all('/SUMMARY[^:]*:([^\r\n]+)/i', $content, $summaries)) {
+                    $result['sampleEvents'] = array_slice($summaries[1], 0, 5);
+                }
+            }
+        } catch (\Exception $e) {
+            $result['error'] = $e->getMessage();
+        }
+        
+        return $result;
     }
     
     public function readFormParameters() {
         parent::readFormParameters();
         
+        if (isset($_POST['icsUrl'])) {
+            $this->icsUrl = StringUtil::trim($_POST['icsUrl']);
+        }
+        if (isset($_POST['calendarID'])) {
+            $this->calendarID = intval($_POST['calendarID']);
+        }
         if (isset($_POST['targetImportID'])) {
             $this->targetImportID = intval($_POST['targetImportID']);
         }
@@ -160,6 +293,8 @@ class CalendarImportSettingsForm extends AbstractForm {
     public function save() {
         parent::save();
         
+        $this->updateOption('calendar_import_ics_url', $this->icsUrl);
+        $this->updateOption('calendar_import_calendar_id', $this->calendarID);
         $this->updateOption('calendar_import_target_import_id', $this->targetImportID);
         $this->updateOption('calendar_import_default_board_id', $this->boardID);
         $this->updateOption('calendar_import_create_threads', $this->createThreads ? 1 : 0);
@@ -186,6 +321,8 @@ class CalendarImportSettingsForm extends AbstractForm {
         parent::assignVariables();
         
         WCF::getTPL()->assign([
+            'icsUrl' => $this->icsUrl,
+            'calendarID' => $this->calendarID,
             'targetImportID' => $this->targetImportID,
             'boardID' => $this->boardID,
             'createThreads' => $this->createThreads,
