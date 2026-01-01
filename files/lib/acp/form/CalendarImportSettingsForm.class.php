@@ -11,7 +11,7 @@ use wcf\util\StringUtil;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 2.0.0
+ * @version 2.1.0
  */
 class CalendarImportSettingsForm extends AbstractForm {
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
@@ -20,6 +20,7 @@ class CalendarImportSettingsForm extends AbstractForm {
     public $icsUrl = '';
     public $categoryID = 0;
     public $targetImportID = 0;
+    public $userID = 1;
     public $boardID = 0;
     public $createThreads = true;
     public $convertTimezone = true;
@@ -53,6 +54,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             $this->icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
             $this->categoryID = (int)$this->getOptionValue('calendar_import_category_id', 0);
             $this->targetImportID = (int)$this->getOptionValue('calendar_import_target_import_id', 0);
+            $this->userID = (int)$this->getOptionValue('calendar_import_user_id', 1);
             $this->boardID = (int)$this->getOptionValue('calendar_import_default_board_id', 0);
             $this->createThreads = (bool)$this->getOptionValue('calendar_import_create_threads', 1);
             $this->convertTimezone = (bool)$this->getOptionValue('calendar_import_convert_timezone', 1);
@@ -99,7 +101,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 30,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.0.0'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.1.0'
             ]);
             $icsContent = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -258,7 +260,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.0.0'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.1.0'
             ]);
             $content = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -347,6 +349,7 @@ class CalendarImportSettingsForm extends AbstractForm {
         if (isset($_POST['icsUrl'])) $this->icsUrl = StringUtil::trim($_POST['icsUrl']);
         if (isset($_POST['categoryID'])) $this->categoryID = intval($_POST['categoryID']);
         if (isset($_POST['targetImportID'])) $this->targetImportID = intval($_POST['targetImportID']);
+        if (isset($_POST['userID'])) $this->userID = intval($_POST['userID']);
         if (isset($_POST['boardID'])) $this->boardID = intval($_POST['boardID']);
         $this->createThreads = isset($_POST['createThreads']);
         $this->convertTimezone = isset($_POST['convertTimezone']);
@@ -366,6 +369,7 @@ class CalendarImportSettingsForm extends AbstractForm {
         $this->updateOption('calendar_import_ics_url', $this->icsUrl);
         $this->updateOption('calendar_import_category_id', $this->categoryID);
         $this->updateOption('calendar_import_target_import_id', $this->targetImportID);
+        $this->updateOption('calendar_import_user_id', $this->userID);
         $this->updateOption('calendar_import_default_board_id', $this->boardID);
         $this->updateOption('calendar_import_create_threads', $this->createThreads ? 1 : 0);
         $this->updateOption('calendar_import_convert_timezone', $this->convertTimezone ? 1 : 0);
@@ -393,6 +397,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             'icsUrl' => $this->icsUrl,
             'categoryID' => $this->categoryID,
             'targetImportID' => $this->targetImportID,
+            'userID' => $this->userID,
             'boardID' => $this->boardID,
             'createThreads' => $this->createThreads,
             'convertTimezone' => $this->convertTimezone,
