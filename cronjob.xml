@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/6.0/cronjob.xsd">
     <import>
+        <cronjob name="com.lucaberwind.wcf.calendar.import.icalImport">
+            <classname>wcf\system\cronjob\ICalImportCronjob</classname>
+            <description>Importiert Events aus ICS-URL</description>
+            <description language="en">Imports events from ICS URL</description>
+            <startminute>0,30</startminute>
+            <starthour>*</starthour>
+            <startdom>*</startdom>
+            <startmonth>*</startmonth>
+            <startdow>*</startdow>
+            <canbeedited>1</canbeedited>
+            <canbedisabled>1</canbedisabled>
+        </cronjob>
+        
         <cronjob name="com.lucaberwind.wcf.calendar.import.fixTimezone">
             <classname>wcf\system\cronjob\FixTimezoneCronjob</classname>
             <description>Korrigiert Timezone-Offset nach ICS-Import</description>
