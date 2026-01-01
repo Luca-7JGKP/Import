@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS wcf1_calendar_import_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tabelle für UID-Mapping zur Event-Deduplizierung
+-- Verwendet calendar1_ Präfix um mit der existierenden WoltLab-Struktur konsistent zu sein
 CREATE TABLE IF NOT EXISTS calendar1_ical_uid_map (
     mapID INT(10) NOT NULL AUTO_INCREMENT,
     eventID INT(10) NOT NULL,

@@ -179,6 +179,7 @@ class ICalImportCronjob extends AbstractCronjob
     
     /**
      * Update lastRun timestamp in event_import table
+     * Note: calendar1_event_import is the existing WoltLab table name
      */
     protected function updateImportTimestamp()
     {
@@ -187,6 +188,7 @@ class ICalImportCronjob extends AbstractCronjob
         }
         
         try {
+            // calendar1_event_import is the fixed WoltLab table name (not dynamic)
             $sql = "UPDATE calendar1_event_import SET lastRun = ? WHERE importID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([TIME_NOW, $this->importID]);
@@ -382,6 +384,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected function findExistingEvent($uid)
     {
         try {
+            // calendar1_ical_uid_map is the table created by this plugin (not dynamic)
             $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([$uid]);
@@ -429,7 +432,7 @@ class ICalImportCronjob extends AbstractCronjob
             
             $eventID = WCF::getDB()->getInsertID(self::$eventTableName, 'eventID');
             
-            // Store UID mapping
+            // Store UID mapping - calendar1_ical_uid_map is the table created by this plugin (not dynamic)
             $sql = "INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) VALUES (?, ?, ?, ?)";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([$eventID, $event['uid'], $this->importID, TIME_NOW]);
@@ -490,6 +493,7 @@ class ICalImportCronjob extends AbstractCronjob
             
             // Update UID mapping timestamp
             try {
+                // calendar1_ical_uid_map is the table created by this plugin (not dynamic)
                 $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE eventID = ?";
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute([TIME_NOW, $eventID]);
