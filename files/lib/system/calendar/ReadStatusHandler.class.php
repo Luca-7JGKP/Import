@@ -13,7 +13,14 @@ use wcf\system\WCF;
  */
 class ReadStatusHandler extends SingletonFactory {
     
-    protected $tableName = 'wcf1_calendar_event_read_status';
+    protected $tableName;
+    
+    /**
+     * @inheritDoc
+     */
+    protected function init() {
+        $this->tableName = 'wcf'.WCF_N.'_calendar_event_read_status';
+    }
     
     /**
      * Markiert ein Event als gelesen für einen Benutzer.
@@ -82,7 +89,7 @@ class ReadStatusHandler extends SingletonFactory {
         try {
             $sql = "INSERT INTO {$this->tableName} (eventID, userID, isRead, readTime, markedReadAutomatically)
                     SELECT ?, userID, 1, ?, 1
-                    FROM wcf1_user
+                    FROM wcf".WCF_N."_user
                     WHERE banned = 0 AND activationCode = 0
                     ON DUPLICATE KEY UPDATE isRead = 1, readTime = VALUES(readTime), markedReadAutomatically = 1";
             $statement = WCF::getDB()->prepareStatement($sql);
