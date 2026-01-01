@@ -5,7 +5,7 @@
         <packagename language="en">Calendar iCal Import</packagename>
         <packagedescription>Importiert Kalender-Events aus iCal-Dateien mit erweiterter Gelesen/Ungelesen-Logik.</packagedescription>
         <packagedescription language="en">Imports calendar events from iCal files with extended read/unread logic.</packagedescription>
-        <version>1.4.0</version>
+        <version>1.4.1</version>
         <date>2026-01-01</date>
     </packageinformation>
     
