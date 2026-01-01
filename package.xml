@@ -5,8 +5,8 @@
         <packagename language="en">Calendar iCal Import</packagename>
         <packagedescription>Importiert Kalender-Events aus iCal-Dateien mit erweiterter Gelesen/Ungelesen-Logik.</packagedescription>
         <packagedescription language="en">Imports calendar events from iCal files with extended read/unread logic.</packagedescription>
-        <version>1.3.2</version>
-        <date>2025-12-31</date>
+        <version>1.4.0</version>
+        <date>2026-01-01</date>
     </packageinformation>
     
     <authorinformation>
@@ -24,6 +24,7 @@
         <instruction type="eventListener">eventListener.xml</instruction>
         <instruction type="option">options.xml</instruction>
         <instruction type="acpMenu">acpMenu.xml</instruction>
+        <instruction type="cronjob">cronjob.xml</instruction>
     </instructions>
     
     <instructions type="update" fromversion="1.*">
@@ -33,5 +34,6 @@
         <instruction type="eventListener">eventListener.xml</instruction>
         <instruction type="option">options.xml</instruction>
         <instruction type="acpMenu">acpMenu.xml</instruction>
+        <instruction type="cronjob">cronjob.xml</instruction>
     </instructions>
 </package>

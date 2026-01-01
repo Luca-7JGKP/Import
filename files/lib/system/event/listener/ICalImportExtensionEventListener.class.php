@@ -7,18 +7,14 @@ use wcf\system\WCF;
 /**
  * Event-Listener für iCal-Import-Erweiterung und Event-Aktionen.
  * 
- * Reagiert auf:
- * - calendar\data\event\EventAction::finalizeAction (create, update, delete)
- * - calendar\data\event\date\EventDateAction::finalizeAction
- * 
- * Funktionen:
- * - Gelesen/Ungelesen-Status für neue Events
- * - Aktualisierte Events als ungelesen markieren
- * - Import-Logging
+ * Gelesen/Ungelesen-Logik:
+ * - Abgelaufene Events werden automatisch als gelesen markiert (via MarkPastEventsReadCronjob)
+ * - Neue zukünftige Events sind ungelesen
+ * - Wenn ein Event aktualisiert wird, wird es für ALLE wieder ungelesen
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.3.1
+ * @version 1.4.0
  */
 class ICalImportExtensionEventListener implements IParameterizedEventListener {
     
@@ -58,6 +54,11 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         }
     }
     
+    /**
+     * Neues Event erstellt.
+     * Neue Events sind automatisch ungelesen (kein Eintrag in visit-Tabelle).
+     * Nur abgelaufene Events werden sofort als gelesen markiert.
+     */
     protected function onEventCreated($eventObj) {
         $returnValues = $eventObj->getReturnValues();
         
@@ -74,14 +75,22 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         
         $this->logAction('create', $eventID, $event);
         
+        // Nur abgelaufene Events sofort als gelesen markieren
+        // Zukünftige Events bleiben ungelesen
         if ($this->shouldAutoMarkPastAsRead()) {
-            $startTime = isset($event->startTime) ? $event->startTime : null;
+            $startTime = $this->getEventStartTime($event);
             if ($startTime && $startTime < TIME_NOW) {
-                $this->markEventAsReadForCurrentUser($eventID);
+                // Abgelaufenes Event - für ALLE Benutzer als gelesen markieren
+                $this->markEventAsReadForAllUsers($eventID);
             }
+            // Zukünftige Events: Nichts tun, sie sind automatisch ungelesen
         }
     }
     
+    /**
+     * Event wurde aktualisiert.
+     * Wenn aktiviert, wird das Event für ALLE Benutzer wieder ungelesen.
+     */
     protected function onEventUpdated($eventObj) {
         if (!$this->shouldMarkUpdatedAsUnread()) {
             return;
@@ -92,6 +101,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         foreach ($objects as $event) {
             $eventID = $this->getEventID($event);
             if ($eventID) {
+                // Event für ALLE Benutzer als ungelesen markieren
                 $this->markEventAsUnreadForAll($eventID);
                 $this->logAction('update', $eventID, $event);
             }
@@ -120,12 +130,56 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         return null;
     }
     
-    protected function markEventAsReadForCurrentUser($eventID) {
-        $userID = WCF::getUser()->userID;
-        if (!$userID) return;
-        $this->trackVisit($eventID, $userID, TIME_NOW);
+    protected function getEventStartTime($event) {
+        // Versuche startTime aus verschiedenen Quellen zu holen
+        if (isset($event->startTime)) {
+            return $event->startTime;
+        }
+        
+        // Fallback: Aus eventDate holen
+        if (isset($event->eventID)) {
+            try {
+                $sql = "SELECT startTime FROM calendar1_event_date WHERE eventID = ? ORDER BY startTime LIMIT 1";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$event->eventID]);
+                $row = $statement->fetchArray();
+                return $row ? $row['startTime'] : null;
+            } catch (\Exception $e) {
+                return null;
+            }
+        }
+        
+        return null;
     }
     
+    /**
+     * Markiert ein Event als gelesen für ALLE aktiven Benutzer.
+     * Wird verwendet für abgelaufene Events.
+     */
+    protected function markEventAsReadForAllUsers($eventID) {
+        $objectTypeID = $this->getCalendarEventObjectTypeID();
+        if (!$objectTypeID) {
+            return;
+        }
+        
+        try {
+            // Verwende INSERT...SELECT für effiziente Batch-Operation
+            $sql = "INSERT IGNORE INTO wcf".WCF_N."_tracked_visit 
+                    (objectTypeID, objectID, userID, visitTime)
+                    SELECT ?, ?, userID, ?
+                    FROM wcf".WCF_N."_user
+                    WHERE banned = 0 AND activationCode = 0";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$objectTypeID, $eventID, TIME_NOW]);
+        } catch (\Exception $e) {
+            // Fehler loggen
+        }
+    }
+    
+    /**
+     * Markiert ein Event als ungelesen für ALLE Benutzer.
+     * Löscht alle visit-Einträge für dieses Event.
+     */
     protected function markEventAsUnreadForAll($eventID) {
         try {
             $objectTypeID = $this->getCalendarEventObjectTypeID();
@@ -136,6 +190,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
             }
         } catch (\Exception $e) {}
         
+        // Legacy-Tabelle auch bereinigen falls vorhanden
         try {
             $sql = "DELETE FROM wcf".WCF_N."_calendar_event_visit WHERE eventID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -147,31 +202,13 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         $this->markEventAsUnreadForAll($eventID);
     }
     
-    protected function trackVisit($eventID, $userID, $visitTime) {
-        try {
-            $objectTypeID = $this->getCalendarEventObjectTypeID();
-            if ($objectTypeID) {
-                $sql = "INSERT INTO wcf".WCF_N."_tracked_visit (objectTypeID, objectID, userID, visitTime) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE visitTime = VALUES(visitTime)";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute([$objectTypeID, $eventID, $userID, $visitTime]);
-                return;
-            }
-        } catch (\Exception $e) {}
-        
-        try {
-            $sql = "INSERT INTO wcf".WCF_N."_calendar_event_visit (eventID, userID, lastVisitTime) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE lastVisitTime = VALUES(lastVisitTime)";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$eventID, $userID, $visitTime]);
-        } catch (\Exception $e) {}
-    }
-    
     protected function getCalendarEventObjectTypeID() {
         static $objectTypeID = null;
         if ($objectTypeID === null) {
             try {
-                $sql = "SELECT objectTypeID FROM wcf".WCF_N."_object_type WHERE objectType = ? OR objectType LIKE ?";
+                $sql = "SELECT objectTypeID FROM wcf".WCF_N."_object_type WHERE objectType = 'com.woltlab.calendar.event'";
                 $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute(['com.woltlab.calendar.event', '%calendar%event%']);
+                $statement->execute();
                 $row = $statement->fetchArray();
                 $objectTypeID = $row ? $row['objectTypeID'] : 0;
             } catch (\Exception $e) {
@@ -204,40 +241,12 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
     }
     
     protected function handleBeforeImport($eventObj, array &$parameters) {
-        $this->convertTimezone($eventObj, $parameters);
+        // Timezone-Konvertierung wird jetzt vom FixTimezoneCronjob übernommen
     }
     
     protected function handleAfterImport($eventObj, array &$parameters) {
         if (isset($parameters['eventID'])) {
             $this->logAction('import', $parameters['eventID'], (object)$parameters);
         }
-    }
-    
-    protected function convertTimezone($eventObj, array &$parameters) {
-        if (!defined('CALENDAR_IMPORT_CONVERT_TIMEZONE') || !CALENDAR_IMPORT_CONVERT_TIMEZONE) return;
-        if (!isset($parameters['startTime']) || !isset($parameters['endTime'])) return;
-        
-        $sourceTimezone = $parameters['timezone'] ?? 'UTC';
-        $targetTimezone = $this->getTargetTimezone();
-        
-        try {
-            $targetTZ = new \DateTimeZone($targetTimezone);
-            if (is_numeric($parameters['startTime'])) {
-                $startDate = new \DateTime('@' . $parameters['startTime']);
-                $startDate->setTimezone($targetTZ);
-                $parameters['startTime'] = $startDate->getTimestamp();
-            }
-            if (is_numeric($parameters['endTime'])) {
-                $endDate = new \DateTime('@' . $parameters['endTime']);
-                $endDate->setTimezone($targetTZ);
-                $parameters['endTime'] = $endDate->getTimestamp();
-            }
-        } catch (\Exception $e) {}
-    }
-    
-    protected function getTargetTimezone() {
-        $user = WCF::getUser();
-        if ($user->userID && $user->timezone) return $user->timezone;
-        return date_default_timezone_get() ?: 'UTC';
     }
 }
