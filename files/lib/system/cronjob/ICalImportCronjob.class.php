@@ -23,56 +23,44 @@ class ICalImportCronjob extends AbstractCronjob
     protected $errors = [];
     
     /**
-     * Detected calendar table name (cached)
-     */
-    protected static $calendarTableName = null;
-    
-    /**
      * Detected event table name (cached)
      */
     protected static $eventTableName = null;
+    
+    /**
+     * Import ID (optional)
+     */
+    protected $importID = null;
     
     public function execute(Cronjob $cronjob)
     {
         parent::execute($cronjob);
         
         $icsUrl = $this->getOption('CALENDAR_IMPORT_ICS_URL');
-        $calendarID = (int)$this->getOption('CALENDAR_IMPORT_CALENDAR_ID');
+        $categoryID = (int)$this->getOption('CALENDAR_IMPORT_CATEGORY_ID');
+        $this->importID = (int)$this->getOption('CALENDAR_IMPORT_IMPORT_ID', 1);
         
         if (empty($icsUrl)) {
             $this->log('error', 'Keine ICS-URL konfiguriert');
             return;
         }
         
-        // Detect calendar tables first
-        $this->detectCalendarTables();
+        // Detect event table
+        $this->detectEventTable();
         
-        // Automatische Kalender-Erkennung wenn keine ID konfiguriert
-        if ($calendarID <= 0) {
-            $this->log('warning', 'Keine Kalender-ID konfiguriert - versuche automatische Erkennung');
-            $calendarID = $this->findFirstAvailableCalendar();
-            if ($calendarID <= 0) {
-                $this->log('error', 'Kein Kalender gefunden. Bitte erstellen Sie zuerst einen Kalender im WoltLab ACP.');
-                return;
-            }
-            $this->log('info', "Automatisch erkannter Kalender: ID {$calendarID}");
+        if (!self::$eventTableName) {
+            $this->log('error', 'Keine Event-Tabelle gefunden');
+            return;
         }
         
-        // Validiere dass Kalender existiert
-        if (!$this->validateCalendarExists($calendarID)) {
-            $this->log('error', "Kalender mit ID {$calendarID} existiert nicht!");
-            $fallbackID = $this->findFirstAvailableCalendar();
-            if ($fallbackID > 0) {
-                $this->log('warning', "Verwende Fallback-Kalender mit ID {$fallbackID}");
-                $calendarID = $fallbackID;
-            } else {
-                $this->log('error', 'Kein gültiger Kalender verfügbar. Bitte erstellen Sie einen Kalender im WoltLab ACP.');
-                return;
-            }
+        // Validate categoryID if provided
+        if ($categoryID <= 0) {
+            $this->log('warning', 'Keine Category-ID konfiguriert - Standard-Kategorie wird verwendet');
+            $categoryID = 1; // Default category
         }
         
-        $this->log('info', "Starte ICS-Import von: {$icsUrl} in Kalender {$calendarID}");
-        $this->log('debug', "Verwende Tabellen: Calendar=" . (self::$calendarTableName ?: 'N/A') . ", Event=" . (self::$eventTableName ?: 'N/A'));
+        $this->log('info', "Starte ICS-Import von: {$icsUrl} in Kategorie {$categoryID}");
+        $this->log('debug', "Verwende Tabellen: Event=" . (self::$eventTableName ?: 'N/A'));
         
         try {
             $icsContent = $this->fetchIcsContent($icsUrl);
@@ -88,13 +76,13 @@ class ICalImportCronjob extends AbstractCronjob
             $events = array_slice($events, 0, $maxEvents);
             
             foreach ($events as $event) {
-                $this->importEvent($event, $calendarID);
+                $this->importEvent($event, $categoryID);
             }
             
             $this->log('info', "Import abgeschlossen: {$this->importedCount} neu, {$this->updatedCount} aktualisiert, {$this->skippedCount} übersprungen");
             
-            // Log in Import-Log Tabelle
-            $this->logImportResult($calendarID, count($events));
+            // Update lastRun in event_import table
+            $this->updateImportTimestamp();
             
         } catch (\Exception $e) {
             $this->log('error', 'Import-Fehler: ' . $e->getMessage());
@@ -102,22 +90,14 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Erkennt dynamisch die korrekten Tabellennamen für Calendar und Events.
+     * Erkennt dynamisch die korrekten Tabellennamen für Events.
      * Unterstützt verschiedene WoltLab-Installationen mit unterschiedlichen Präfixen.
      */
-    protected function detectCalendarTables()
+    protected function detectEventTable()
     {
-        if (self::$calendarTableName !== null && self::$eventTableName !== null) {
+        if (self::$eventTableName !== null) {
             return; // Already detected
         }
-        
-        // Possible calendar table patterns (in order of preference)
-        $calendarPatterns = [
-            'calendar' . WCF_N . '_calendar',
-            'calendar1_calendar',
-            'wcf' . WCF_N . '_calendar',
-            'wcf1_calendar'
-        ];
         
         $eventPatterns = [
             'calendar' . WCF_N . '_event',
@@ -125,15 +105,6 @@ class ICalImportCronjob extends AbstractCronjob
             'wcf' . WCF_N . '_calendar_event',
             'wcf1_calendar_event'
         ];
-        
-        // Try to find calendar table
-        foreach ($calendarPatterns as $tableName) {
-            if ($this->tableExists($tableName)) {
-                self::$calendarTableName = $tableName;
-                $this->log('debug', "Kalender-Tabelle gefunden: {$tableName}");
-                break;
-            }
-        }
         
         // Try to find event table
         foreach ($eventPatterns as $tableName) {
@@ -144,38 +115,24 @@ class ICalImportCronjob extends AbstractCronjob
             }
         }
         
-        // Fallback: Scan database for calendar tables
-        if (!self::$calendarTableName || !self::$eventTableName) {
-            $this->scanDatabaseForCalendarTables();
-        }
-        
-        // Use WoltLab Calendar API as fallback
-        if (!self::$calendarTableName) {
-            $this->log('warning', 'Keine Calendar-Tabelle gefunden - versuche WoltLab Calendar API');
+        // Fallback: Scan database for event tables
+        if (!self::$eventTableName) {
+            $this->scanDatabaseForEventTable();
         }
     }
     
     /**
-     * Scannt die Datenbank nach Kalender-Tabellen.
+     * Scannt die Datenbank nach Event-Tabellen.
      */
-    protected function scanDatabaseForCalendarTables()
+    protected function scanDatabaseForEventTable()
     {
         try {
-            $sql = "SHOW TABLES LIKE '%calendar%'";
+            $sql = "SHOW TABLES LIKE '%event%'";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             
             while ($row = $statement->fetchArray(\PDO::FETCH_NUM)) {
                 $tableName = $row[0];
-                
-                // Check if it's a calendar table (ends with _calendar)
-                if (preg_match('/_calendar$/', $tableName) && !self::$calendarTableName) {
-                    // Verify it has expected columns
-                    if ($this->hasColumn($tableName, 'calendarID')) {
-                        self::$calendarTableName = $tableName;
-                        $this->log('debug', "Dynamisch gefundene Kalender-Tabelle: {$tableName}");
-                    }
-                }
                 
                 // Check if it's an event table (ends with _event but not _event_*)
                 if (preg_match('/_event$/', $tableName) && !self::$eventTableName) {
@@ -221,152 +178,20 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Findet den ersten verfügbaren Kalender.
-     * Unterstützt dynamische Tabellennamen und WoltLab Calendar API.
+     * Update lastRun timestamp in event_import table
      */
-    protected function findFirstAvailableCalendar()
+    protected function updateImportTimestamp()
     {
-        // First, try WoltLab Calendar API
+        if (!$this->importID) {
+            return;
+        }
+        
         try {
-            if (class_exists('calendar\\data\\calendar\\CalendarList')) {
-                $calendarList = new \calendar\data\calendar\CalendarList();
-                $calendarList->readObjects();
-                $calendars = $calendarList->getObjects();
-                if (!empty($calendars)) {
-                    $calendar = reset($calendars);
-                    $this->log('debug', 'Kalender über WoltLab API gefunden');
-                    return $calendar->calendarID;
-                }
-            }
+            $sql = "UPDATE calendar1_event_import SET lastRun = ? WHERE importID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([TIME_NOW, $this->importID]);
         } catch (\Exception $e) {
-            $this->log('debug', 'WoltLab Calendar API nicht verfügbar: ' . $e->getMessage());
-        }
-        
-        // Fallback: Direct database query
-        if (self::$calendarTableName) {
-            try {
-                $sql = "SELECT calendarID FROM " . self::$calendarTableName . " ORDER BY calendarID ASC LIMIT 1";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute();
-                $row = $statement->fetchArray();
-                if ($row) {
-                    return (int)$row['calendarID'];
-                }
-            } catch (\Exception $e) {
-                $this->log('error', 'Fehler bei Kalender-Suche in ' . self::$calendarTableName . ': ' . $e->getMessage());
-            }
-        }
-        
-        return 0;
-    }
-    
-    /**
-     * Gibt alle verfügbaren Kalender zurück (statische Methode für ACP-Formular).
-     * Unterstützt dynamische Tabellennamen und WoltLab Calendar API.
-     */
-    public static function getAvailableCalendars()
-    {
-        $calendars = [];
-        
-        // Try WoltLab Calendar API first
-        try {
-            if (class_exists('calendar\\data\\calendar\\CalendarList')) {
-                $calendarList = new \calendar\data\calendar\CalendarList();
-                $calendarList->readObjects();
-                foreach ($calendarList->getObjects() as $calendar) {
-                    $calendars[$calendar->calendarID] = $calendar->title;
-                }
-                if (!empty($calendars)) {
-                    return $calendars;
-                }
-            }
-        } catch (\Exception $e) {}
-        
-        // Fallback: Direct database query with multiple table patterns
-        $tablePatterns = [
-            'calendar' . WCF_N . '_calendar',
-            'calendar1_calendar',
-            'wcf' . WCF_N . '_calendar'
-        ];
-        
-        foreach ($tablePatterns as $tableName) {
-            try {
-                $sql = "SELECT calendarID, title FROM {$tableName} ORDER BY title ASC";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute();
-                while ($row = $statement->fetchArray()) {
-                    $calendars[$row['calendarID']] = $row['title'];
-                }
-                if (!empty($calendars)) {
-                    return $calendars;
-                }
-            } catch (\Exception $e) {
-                // Table doesn't exist, try next pattern
-            }
-        }
-        
-        return $calendars;
-    }
-    
-    /**
-     * Validiert dass ein Kalender mit der gegebenen ID existiert.
-     */
-    protected function validateCalendarExists($calendarID)
-    {
-        // Try WoltLab Calendar API first
-        try {
-            if (class_exists('calendar\\data\\calendar\\Calendar')) {
-                $calendar = new \calendar\data\calendar\Calendar($calendarID);
-                if ($calendar->calendarID) {
-                    return true;
-                }
-            }
-        } catch (\Exception $e) {}
-        
-        // Fallback: Direct database query
-        if (self::$calendarTableName) {
-            try {
-                $sql = "SELECT calendarID FROM " . self::$calendarTableName . " WHERE calendarID = ?";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute([$calendarID]);
-                return $statement->fetchColumn() !== false;
-            } catch (\Exception $e) {
-                $this->log('error', 'Fehler bei Kalender-Validierung: ' . $e->getMessage());
-            }
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Loggt das Import-Ergebnis in die Datenbank.
-     */
-    protected function logImportResult($calendarID, $totalEvents)
-    {
-        // Try multiple table patterns for import log
-        $logTables = [
-            'calendar' . WCF_N . '_event_import_log',
-            'calendar1_event_import_log'
-        ];
-        
-        foreach ($logTables as $tableName) {
-            try {
-                $sql = "INSERT INTO {$tableName} 
-                        (calendarID, importTime, eventsFound, eventsImported, eventsUpdated, eventsSkipped)
-                        VALUES (?, ?, ?, ?, ?, ?)";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute([
-                    $calendarID,
-                    TIME_NOW,
-                    $totalEvents,
-                    $this->importedCount,
-                    $this->updatedCount,
-                    $this->skippedCount
-                ]);
-                return; // Success
-            } catch (\Exception $e) {
-                // Table doesn't exist, try next
-            }
+            $this->log('debug', 'Konnte lastRun nicht aktualisieren: ' . $e->getMessage());
         }
     }
     
@@ -541,37 +366,34 @@ class ICalImportCronjob extends AbstractCronjob
         return trim($value);
     }
     
-    protected function importEvent($event, $calendarID)
+    protected function importEvent($event, $categoryID)
     {
         $existingEventID = $this->findExistingEvent($event['uid']);
         
         if ($existingEventID) {
-            $this->updateEvent($existingEventID, $event, $calendarID);
+            $this->updateEvent($existingEventID, $event, $categoryID);
             $this->updatedCount++;
         } else {
-            $this->createEvent($event, $calendarID);
+            $this->createEvent($event, $categoryID);
             $this->importedCount++;
         }
     }
     
     protected function findExistingEvent($uid)
     {
-        if (!self::$eventTableName) {
-            return null;
-        }
-        
         try {
-            $sql = "SELECT eventID FROM " . self::$eventTableName . " WHERE externalSource = ?";
+            $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([$uid]);
             $row = $statement->fetchArray();
             return $row ? $row['eventID'] : null;
         } catch (\Exception $e) {
+            $this->log('debug', 'UID map lookup failed: ' . $e->getMessage());
             return null;
         }
     }
     
-    protected function createEvent($event, $calendarID)
+    protected function createEvent($event, $categoryID)
     {
         if (!self::$eventTableName) {
             $this->log('error', 'Keine Event-Tabelle gefunden - Event kann nicht erstellt werden');
@@ -591,22 +413,26 @@ class ICalImportCronjob extends AbstractCronjob
             ]);
             
             $sql = "INSERT INTO " . self::$eventTableName . " 
-                    (calendarID, userID, username, subject, message, time, enableHtml, externalSource, eventDate)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    (categoryID, userID, username, subject, message, time, enableHtml, eventDate)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([
-                $calendarID,
+                $categoryID,
                 WCF::getUser()->userID ?: 1,
                 WCF::getUser()->username ?: 'System',
                 $event['summary'],
                 $event['description'] ?: $event['summary'],
                 TIME_NOW,
                 0,
-                $event['uid'],
                 $eventDateData
             ]);
             
             $eventID = WCF::getDB()->getInsertID(self::$eventTableName, 'eventID');
+            
+            // Store UID mapping
+            $sql = "INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) VALUES (?, ?, ?, ?)";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$eventID, $event['uid'], $this->importID, TIME_NOW]);
             
             // Insert into event_date table
             $eventDateTable = str_replace('_event', '_event_date', self::$eventTableName);
@@ -633,7 +459,7 @@ class ICalImportCronjob extends AbstractCronjob
         }
     }
     
-    protected function updateEvent($eventID, $event, $calendarID)
+    protected function updateEvent($eventID, $event, $categoryID)
     {
         if (!self::$eventTableName) {
             return;
@@ -661,6 +487,15 @@ class ICalImportCronjob extends AbstractCronjob
                 TIME_NOW,
                 $eventID
             ]);
+            
+            // Update UID mapping timestamp
+            try {
+                $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE eventID = ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([TIME_NOW, $eventID]);
+            } catch (\Exception $e) {
+                $this->log('debug', 'UID map update failed: ' . $e->getMessage());
+            }
             
             // Update event_date table
             $eventDateTable = str_replace('_event', '_event_date', self::$eventTableName);

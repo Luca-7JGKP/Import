@@ -159,9 +159,11 @@ class CalendarImportDebug {
     
     /**
      * Dynamically scan database for calendar-related tables
+     * Note: calendar1_calendar and calendar1_category tables may not exist
      */
     private function scanCalendarTables(): void {
         $this->log("Scanning database for calendar tables...");
+        $this->log("Note: calendar1_calendar and calendar1_category tables may not exist in this WoltLab setup");
         
         $patterns = [
             '%calendar%',
@@ -226,7 +228,8 @@ class CalendarImportDebug {
             $result['columns'] = $columnNames;
             
             // Determine table type based on columns
-            $eventIndicators = ['start_time', 'end_time', 'startTime', 'endTime', 'event_date', 'eventDate'];
+            // Note: events use categoryID, not calendarID
+            $eventIndicators = ['start_time', 'end_time', 'startTime', 'endTime', 'event_date', 'eventDate', 'categoryID'];
             $calendarIndicators = ['calendar_id', 'calendarID', 'calendar_name'];
             
             $hasEventColumns = !empty(array_intersect($columnNames, $eventIndicators));
@@ -346,15 +349,15 @@ class CalendarImportDebug {
      */
     private function normalizeEventFromDB(array $row, string $tableName): array {
         $idField = $this->findColumn($row, ['eventID', 'event_id', 'id']);
-        $calIdField = $this->findColumn($row, ['calendarID', 'calendar_id']);
+        $catIdField = $this->findColumn($row, ['categoryID', 'category_id', 'calendarID', 'calendar_id']);
         $titleField = $this->findColumn($row, ['title', 'name', 'subject', 'event_title']);
-        $descField = $this->findColumn($row, ['description', 'content', 'body', 'text']);
+        $descField = $this->findColumn($row, ['description', 'content', 'body', 'text', 'message']);
         $startField = $this->findColumn($row, ['startTime', 'start_time', 'start_date', 'event_start']);
         $endField = $this->findColumn($row, ['endTime', 'end_time', 'end_date', 'event_end']);
         
         return [
             'id' => $row[$idField] ?? null,
-            'calendar_id' => $row[$calIdField] ?? null,
+            'category_id' => $row[$catIdField] ?? null,
             'title' => $row[$titleField] ?? 'Untitled Event',
             'description' => $row[$descField] ?? '',
             'location' => $row['location'] ?? '',
