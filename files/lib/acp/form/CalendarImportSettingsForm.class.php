@@ -11,14 +11,14 @@ use wcf\util\StringUtil;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.6.3
+ * @version 2.0.0
  */
 class CalendarImportSettingsForm extends AbstractForm {
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
     public $neededPermissions = [];
     
     public $icsUrl = '';
-    public $calendarID = 0;
+    public $categoryID = 0;
     public $targetImportID = 0;
     public $boardID = 0;
     public $createThreads = true;
@@ -29,15 +29,15 @@ class CalendarImportSettingsForm extends AbstractForm {
     public $logLevel = 'info';
     public $debugInfo = [];
     public $testImportResult = null;
-    public $availableCalendars = [];
-    public $calendarValidationError = '';
+    public $availableImports = [];
+    public $categoryValidationError = '';
     public $runImportNow = false;
     
     public function readData() {
         parent::readData();
         
-        // Load available calendars
-        $this->availableCalendars = $this->loadAvailableCalendars();
+        // Load available imports from calendar1_event_import
+        $this->availableImports = $this->loadAvailableImports();
         
         if (isset($_GET['testImport']) && $_GET['testImport'] == '1') {
             $this->runTestImport();
@@ -51,7 +51,7 @@ class CalendarImportSettingsForm extends AbstractForm {
         
         if (empty($_POST)) {
             $this->icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
-            $this->calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
+            $this->categoryID = (int)$this->getOptionValue('calendar_import_category_id', 0);
             $this->targetImportID = (int)$this->getOptionValue('calendar_import_target_import_id', 0);
             $this->boardID = (int)$this->getOptionValue('calendar_import_default_board_id', 0);
             $this->createThreads = (bool)$this->getOptionValue('calendar_import_create_threads', 1);
@@ -76,16 +76,21 @@ class CalendarImportSettingsForm extends AbstractForm {
         
         try {
             $icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
+            
+            if (empty($icsUrl)) {
+                $targetImportID = (int)$this->getOptionValue('calendar_import_target_import_id', 0);
+                if ($targetImportID > 0) {
+                    $importData = $this->getImportById($targetImportID);
+                    if ($importData) {
+                        $icsUrl = $importData['url'];
+                    }
+                }
+            }
+            
             if (empty($icsUrl)) {
                 throw new \Exception('Keine ICS-URL konfiguriert.');
             }
             $this->testImportResult['steps'][] = ['name' => 'ICS-URL prüfen', 'status' => 'success', 'message' => 'URL vorhanden'];
-            
-            $calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
-            if ($calendarID <= 0) {
-                throw new \Exception('Keine gültige Kalender-ID konfiguriert.');
-            }
-            $this->testImportResult['steps'][] = ['name' => 'Kalender-ID prüfen', 'status' => 'success', 'message' => 'ID: ' . $calendarID];
             
             $ch = curl_init();
             curl_setopt_array($ch, [
@@ -94,7 +99,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 30,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.3'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.0.0'
             ]);
             $icsContent = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -139,13 +144,12 @@ class CalendarImportSettingsForm extends AbstractForm {
             'options' => [],
             'cronjobs' => [],
             'cronjobClasses' => [],
-            'calendars' => [],
+            'imports' => [],
             'icsTest' => null,
             'calendarPackages' => [],
             'dbTables' => []
         ];
         
-        // Package info
         try {
             $sql = "SELECT * FROM wcf".WCF_N."_package WHERE package = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -153,7 +157,6 @@ class CalendarImportSettingsForm extends AbstractForm {
             $this->debugInfo['package'] = $statement->fetchArray();
         } catch (\Exception $e) {}
         
-        // Event listeners
         if ($this->debugInfo['package']) {
             try {
                 $sql = "SELECT * FROM wcf".WCF_N."_event_listener WHERE packageID = ?";
@@ -165,7 +168,6 @@ class CalendarImportSettingsForm extends AbstractForm {
             } catch (\Exception $e) {}
         }
         
-        // Options
         try {
             $sql = "SELECT optionName, optionValue FROM wcf".WCF_N."_option WHERE optionName LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -177,7 +179,6 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         } catch (\Exception $e) {}
         
-        // Cronjob classes
         $cronjobClasses = [
             'wcf\\system\\cronjob\\ICalImportCronjob',
             'wcf\\system\\cronjob\\FixTimezoneCronjob',
@@ -189,12 +190,12 @@ class CalendarImportSettingsForm extends AbstractForm {
             ];
         }
         
-        // Check calendar tables - use dynamic table prefix
         $possibleTables = [
-            'calendar'.WCF_N.'_calendar',
-            'wcf'.WCF_N.'_calendar', 
-            'calendar'.WCF_N.'_event', 
-            'wcf'.WCF_N.'_calendar_event'
+            'calendar1_event',
+            'calendar1_event_import',
+            'calendar1_event_date',
+            'calendar1_ical_uid_map',
+            'wcf1_calendar_import_log'
         ];
         foreach ($possibleTables as $table) {
             try {
@@ -207,50 +208,15 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         }
         
-        // Calendars - try multiple table names with dynamic prefix
-        $calendarTableNames = [
-            'calendar'.WCF_N.'_calendar',
-            'wcf'.WCF_N.'_calendar'
-        ];
-        
-        foreach ($calendarTableNames as $tableName) {
-            try {
-                // First check if table exists
-                $sql = "SHOW TABLES LIKE ?";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute([$tableName]);
-                if ($statement->fetchColumn() !== false) {
-                    // Table exists, query calendars
-                    $sql = "SELECT calendarID, title FROM ".$tableName." ORDER BY calendarID";
-                    $statement = WCF::getDB()->prepareStatement($sql);
-                    $statement->execute();
-                    while ($row = $statement->fetchArray()) {
-                        $this->debugInfo['calendars'][] = $row;
-                    }
-                    break; // Found calendars, stop searching
-                }
-            } catch (\Exception $e) {
-                // Try next table name
+        try {
+            $sql = "SELECT importID, url, categoryID, isDisabled FROM calendar1_event_import ORDER BY importID";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute();
+            while ($row = $statement->fetchArray()) {
+                $this->debugInfo['imports'][] = $row;
             }
-        }
+        } catch (\Exception $e) {}
         
-        // If still no calendars found, try WoltLab Calendar API
-        if (empty($this->debugInfo['calendars'])) {
-            try {
-                if (class_exists('calendar\\data\\calendar\\CalendarList')) {
-                    $calendarList = new \calendar\data\calendar\CalendarList();
-                    $calendarList->readObjects();
-                    foreach ($calendarList->getObjects() as $calendar) {
-                        $this->debugInfo['calendars'][] = [
-                            'calendarID' => $calendar->calendarID,
-                            'title' => $calendar->title
-                        ];
-                    }
-                }
-            } catch (\Exception $e) {}
-        }
-        
-        // Cronjobs
         try {
             $sql = "SELECT cronjobID, className, isDisabled, nextExec FROM wcf".WCF_N."_cronjob WHERE className LIKE ? OR className LIKE ? OR className LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -260,7 +226,6 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         } catch (\Exception $e) {}
         
-        // Calendar packages
         try {
             $sql = "SELECT package, packageVersion FROM wcf".WCF_N."_package WHERE package LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -270,7 +235,6 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         } catch (\Exception $e) {}
         
-        // ICS Test
         $testUrl = !empty($this->icsUrl) ? $this->icsUrl : $this->getOptionValue('calendar_import_ics_url', '');
         if (!empty($testUrl)) {
             $this->debugInfo['icsTest'] = $this->testIcsUrl($testUrl);
@@ -294,7 +258,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.3'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.0.0'
             ]);
             $content = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -316,75 +280,42 @@ class CalendarImportSettingsForm extends AbstractForm {
         return $result;
     }
     
-    protected function loadAvailableCalendars() {
-        $calendars = [];
+    protected function loadAvailableImports() {
+        $imports = [];
         
-        // Try calendar1_calendar table first (standard WoltLab Calendar)
         try {
-            $sql = "SELECT calendarID, title FROM calendar1_calendar ORDER BY calendarID";
+            $sql = "SELECT importID, url, categoryID, isDisabled FROM calendar1_event_import ORDER BY importID";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             while ($row = $statement->fetchArray()) {
-                $calendars[] = $row;
-            }
-            if (!empty($calendars)) {
-                return $calendars;
+                $imports[] = $row;
             }
         } catch (\Exception $e) {}
         
-        // Fallback: try with dynamic table prefix
-        try {
-            $sql = "SELECT calendarID, title FROM calendar".WCF_N."_calendar ORDER BY calendarID";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            while ($row = $statement->fetchArray()) {
-                $calendars[] = $row;
-            }
-            if (!empty($calendars)) {
-                return $calendars;
-            }
-        } catch (\Exception $e) {}
-        
-        // Fallback: try WoltLab Calendar API
-        try {
-            if (class_exists('calendar\\data\\calendar\\CalendarList')) {
-                $calendarList = new \calendar\data\calendar\CalendarList();
-                $calendarList->readObjects();
-                foreach ($calendarList->getObjects() as $calendar) {
-                    $calendars[] = [
-                        'calendarID' => $calendar->calendarID,
-                        'title' => $calendar->title
-                    ];
-                }
-            }
-        } catch (\Exception $e) {}
-        
-        return $calendars;
+        return $imports;
     }
     
-    protected function validateCalendarExists($calendarID) {
-        if ($calendarID <= 0) {
-            return false;
+    protected function getImportById($importID) {
+        try {
+            $sql = "SELECT importID, url, categoryID, isDisabled FROM calendar1_event_import WHERE importID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$importID]);
+            return $statement->fetchArray();
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+    
+    protected function validateImportExists($importID) {
+        if ($importID <= 0) {
+            return true;
         }
         
         try {
-            // Try calendar1_calendar table first
-            $sql = "SELECT calendarID FROM calendar1_calendar WHERE calendarID = ?";
+            $sql = "SELECT importID FROM calendar1_event_import WHERE importID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$calendarID]);
-            $calendar = $statement->fetchArray();
-            
-            if ($calendar) {
-                return true;
-            }
-            
-            // Fallback: try with dynamic table prefix
-            $sql = "SELECT calendarID FROM calendar".WCF_N."_calendar WHERE calendarID = ?";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$calendarID]);
-            $calendar = $statement->fetchArray();
-            
-            return (bool)$calendar;
+            $statement->execute([$importID]);
+            return $statement->fetchArray() !== false;
         } catch (\Exception $e) {
             return false;
         }
@@ -394,18 +325,12 @@ class CalendarImportSettingsForm extends AbstractForm {
         try {
             require_once(WCF_DIR . 'lib/system/cronjob/ICalImportCronjob.class.php');
             $cronjob = new \wcf\system\cronjob\ICalImportCronjob();
-            
-            // Create a mock cronjob object
-            $mockCronjob = new \stdClass();
-            $mockCronjob->cronjobID = 0;
-            
-            // Execute the import
-            $cronjob->execute($mockCronjob);
+            $cronjob->execute(null);
             
             $this->testImportResult = [
                 'success' => true,
                 'timestamp' => date('Y-m-d H:i:s'),
-                'message' => 'Import wurde erfolgreich ausgeführt. Überprüfen Sie die Logs für Details.'
+                'message' => 'Import wurde erfolgreich ausgeführt.'
             ];
         } catch (\Exception $e) {
             $this->testImportResult = [
@@ -420,7 +345,7 @@ class CalendarImportSettingsForm extends AbstractForm {
         parent::readFormParameters();
         
         if (isset($_POST['icsUrl'])) $this->icsUrl = StringUtil::trim($_POST['icsUrl']);
-        if (isset($_POST['calendarID'])) $this->calendarID = intval($_POST['calendarID']);
+        if (isset($_POST['categoryID'])) $this->categoryID = intval($_POST['categoryID']);
         if (isset($_POST['targetImportID'])) $this->targetImportID = intval($_POST['targetImportID']);
         if (isset($_POST['boardID'])) $this->boardID = intval($_POST['boardID']);
         $this->createThreads = isset($_POST['createThreads']);
@@ -434,14 +359,12 @@ class CalendarImportSettingsForm extends AbstractForm {
     public function save() {
         parent::save();
         
-        // Validate calendar ID before saving
-        if ($this->calendarID > 0 && !$this->validateCalendarExists($this->calendarID)) {
-            $this->calendarValidationError = "Warnung: Kalender mit ID {$this->calendarID} wurde nicht gefunden. Bitte wählen Sie einen gültigen Kalender aus.";
-            // Still save the value but show warning
+        if ($this->targetImportID > 0 && !$this->validateImportExists($this->targetImportID)) {
+            $this->categoryValidationError = "Warnung: Import mit ID {$this->targetImportID} wurde nicht gefunden.";
         }
         
         $this->updateOption('calendar_import_ics_url', $this->icsUrl);
-        $this->updateOption('calendar_import_calendar_id', $this->calendarID);
+        $this->updateOption('calendar_import_category_id', $this->categoryID);
         $this->updateOption('calendar_import_target_import_id', $this->targetImportID);
         $this->updateOption('calendar_import_default_board_id', $this->boardID);
         $this->updateOption('calendar_import_create_threads', $this->createThreads ? 1 : 0);
@@ -451,7 +374,6 @@ class CalendarImportSettingsForm extends AbstractForm {
         $this->updateOption('calendar_import_max_events', $this->maxEvents);
         $this->updateOption('calendar_import_log_level', $this->logLevel);
         
-        // Cache reset
         \wcf\system\cache\builder\OptionCacheBuilder::getInstance()->reset();
         
         $this->saved();
@@ -469,7 +391,7 @@ class CalendarImportSettingsForm extends AbstractForm {
         
         WCF::getTPL()->assign([
             'icsUrl' => $this->icsUrl,
-            'calendarID' => $this->calendarID,
+            'categoryID' => $this->categoryID,
             'targetImportID' => $this->targetImportID,
             'boardID' => $this->boardID,
             'createThreads' => $this->createThreads,
@@ -480,8 +402,8 @@ class CalendarImportSettingsForm extends AbstractForm {
             'logLevel' => $this->logLevel,
             'debugInfo' => $this->debugInfo,
             'testImportResult' => $this->testImportResult,
-            'availableCalendars' => $this->availableCalendars,
-            'calendarValidationError' => $this->calendarValidationError
+            'availableImports' => $this->availableImports,
+            'categoryValidationError' => $this->categoryValidationError
         ]);
     }
 }
