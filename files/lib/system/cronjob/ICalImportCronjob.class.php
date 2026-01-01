@@ -10,7 +10,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 2.0.0
+ * @version 2.0.1
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -20,9 +20,17 @@ class ICalImportCronjob extends AbstractCronjob
     protected $errors = [];
     protected $importID = null;
     
-    public function execute(Cronjob $cronjob)
+    /**
+     * Execute the import - can be called with Cronjob object or null for manual execution.
+     * 
+     * @param Cronjob|object|null $cronjob
+     */
+    public function execute($cronjob = null)
     {
-        parent::execute($cronjob);
+        // Only call parent if we have a real Cronjob object
+        if ($cronjob instanceof Cronjob) {
+            parent::execute($cronjob);
+        }
         
         // Ensure UID mapping table exists
         $this->ensureUidMapTableExists();
@@ -76,6 +84,14 @@ class ICalImportCronjob extends AbstractCronjob
         } catch (\Exception $e) {
             $this->log('error', 'Import-Fehler: ' . $e->getMessage());
         }
+    }
+    
+    /**
+     * Run import manually (without Cronjob object).
+     */
+    public function runManually()
+    {
+        $this->execute(null);
     }
     
     /**
