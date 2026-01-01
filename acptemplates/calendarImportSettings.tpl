@@ -11,6 +11,24 @@
     <woltlab-core-notice type="success">{lang}wcf.global.success.edit{/lang}</woltlab-core-notice>
 {/if}
 
+{if $calendarValidationError}
+    <woltlab-core-notice type="warning">{$calendarValidationError}</woltlab-core-notice>
+{/if}
+
+{if $testImportResult}
+    {if $testImportResult.success}
+        <woltlab-core-notice type="success">
+            <strong>Manueller Import ausgeführt</strong><br>
+            {$testImportResult.message}
+        </woltlab-core-notice>
+    {else}
+        <woltlab-core-notice type="error">
+            <strong>Import-Fehler</strong><br>
+            {$testImportResult.message}
+        </woltlab-core-notice>
+    {/if}
+{/if}
+
 {if $errorField}
     <woltlab-core-notice type="error">{lang}wcf.global.form.error{/lang}</woltlab-core-notice>
 {/if}
@@ -28,10 +46,22 @@
         </dl>
         
         <dl{if $errorField == 'calendarID'} class="formError"{/if}>
-            <dt><label for="calendarID">Ziel-Kalender-ID</label></dt>
+            <dt><label for="calendarID">Ziel-Kalender</label></dt>
             <dd>
-                <input type="number" id="calendarID" name="calendarID" value="{$calendarID}" class="short" min="1">
-                <small>ID des Kalenders in den importiert werden soll (siehe Debug-Bereich unten)</small>
+                {if $availableCalendars|count > 0}
+                    <select id="calendarID" name="calendarID" class="medium">
+                        <option value="0"{if $calendarID == 0} selected{/if}>-- Bitte wählen --</option>
+                        {foreach from=$availableCalendars item=cal}
+                            <option value="{$cal.calendarID}"{if $calendarID == $cal.calendarID} selected{/if}>
+                                ID: {$cal.calendarID}{if $cal.title} - {$cal.title}{/if}
+                            </option>
+                        {/foreach}
+                    </select>
+                    <small>Wählen Sie den Kalender aus, in den die Events importiert werden sollen</small>
+                {else}
+                    <input type="number" id="calendarID" name="calendarID" value="{$calendarID}" class="short" min="1">
+                    <small>ID des Kalenders in den importiert werden soll (keine Kalender verfügbar zur Auswahl)</small>
+                {/if}
             </dd>
         </dl>
     </section>
@@ -111,6 +141,10 @@
     
     <div class="formSubmit">
         <input type="submit" value="{lang}wcf.global.button.submit{/lang}" accesskey="s">
+        <a href="{link controller='CalendarImportSettings'}runImport=1{/link}" class="button" style="margin-left: 10px;">
+            <span class="icon icon16 fa-play"></span>
+            <span>Import jetzt ausführen</span>
+        </a>
         {csrfToken}
     </div>
 </form>
@@ -151,11 +185,15 @@
             {foreach from=$debugInfo.calendars item=cal}
                 <span style="background: #0f3460; padding: 5px 12px; border-radius: 4px;">
                     ID: <strong>{$cal.calendarID}</strong>
+                    {if $cal.title} - {$cal.title}{/if}
+                    {if $cal.calendarID == $calendarID}
+                        <span style="background: #143d1e; color: #00ff88; padding: 2px 6px; border-radius: 3px; margin-left: 5px; font-size: 0.85em;">✓ Aktiv</span>
+                    {/if}
                 </span>
             {/foreach}
             </div>
         {else}
-            <div style="background: #3d3414; padding: 10px; border-radius: 4px;">⚠️ Keine Kalender gefunden</div>
+            <div style="background: #3d3414; padding: 10px; border-radius: 4px;">⚠️ Keine Kalender gefunden - bitte installieren Sie das WoltLab Calendar Plugin</div>
         {/if}
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">Cronjobs</h3>
@@ -166,12 +204,21 @@
                         {if $cron.className|isset}{$cron.className}{else}ID: {$cron.cronjobID}{/if}
                     </span>
                     <span>
-                        {if $cron.isDisabled}<span style="color:#ff6b6b;">🔴 Deaktiviert</span>{else}<span style="color:#00ff88;">🟢 Aktiv</span>{/if}
+                        {if $cron.isDisabled}
+                            <span style="color:#ff6b6b;">🔴 Deaktiviert</span>
+                        {else}
+                            <span style="color:#00ff88;">🟢 Aktiv</span>
+                            {if $cron.nextExec > 0}
+                                <span style="color:#888; font-size: 0.9em; margin-left: 8px;">
+                                    Nächster Lauf: {$cron.nextExec|date:'d.m.Y H:i'}
+                                </span>
+                            {/if}
+                        {/if}
                     </span>
                 </div>
             {/foreach}
         {else}
-            <div style="background: #3d1414; padding: 10px; border-radius: 4px;">❌ Keine Cronjobs gefunden</div>
+            <div style="background: #3d1414; padding: 10px; border-radius: 4px;">❌ Keine Cronjobs gefunden - Plugin neu installieren!</div>
         {/if}
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">PHP-Klassen</h3>

@@ -36,6 +36,12 @@ class ICalImportCronjob extends AbstractCronjob
             return;
         }
         
+        // Validate calendar exists
+        if (!$this->validateCalendarExists($calendarID)) {
+            $this->log('error', "Kalender mit ID {$calendarID} existiert nicht. Bitte überprüfen Sie die Kalender-ID in den Einstellungen.");
+            return;
+        }
+        
         $this->log('info', "Starte ICS-Import von: {$icsUrl}");
         
         try {
@@ -353,6 +359,32 @@ class ICalImportCronjob extends AbstractCronjob
             }
         }
         return $objectTypeID ?: null;
+    }
+    
+    protected function validateCalendarExists($calendarID)
+    {
+        try {
+            // Try calendar1_calendar table first (standard WoltLab Calendar)
+            $sql = "SELECT calendarID FROM calendar1_calendar WHERE calendarID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$calendarID]);
+            $calendar = $statement->fetchArray();
+            
+            if ($calendar) {
+                return true;
+            }
+            
+            // Fallback: try with dynamic table prefix
+            $sql = "SELECT calendarID FROM calendar".WCF_N."_calendar WHERE calendarID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$calendarID]);
+            $calendar = $statement->fetchArray();
+            
+            return (bool)$calendar;
+        } catch (\Exception $e) {
+            $this->log('error', 'Fehler bei Kalender-Validierung: ' . $e->getMessage());
+            return false;
+        }
     }
     
     protected function getOption($name, $default = null)
