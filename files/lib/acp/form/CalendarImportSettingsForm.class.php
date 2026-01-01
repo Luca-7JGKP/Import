@@ -10,7 +10,7 @@ use wcf\util\StringUtil;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.5.0
+ * @version 1.5.1
  */
 class CalendarImportSettingsForm extends AbstractForm {
     public $activeMenuItem = 'wcf.acp.menu.link.calendar.import';
@@ -33,39 +33,32 @@ class CalendarImportSettingsForm extends AbstractForm {
         parent::readData();
         
         if (empty($_POST)) {
-            if (defined('CALENDAR_IMPORT_ICS_URL')) {
-                $this->icsUrl = CALENDAR_IMPORT_ICS_URL;
-            }
-            if (defined('CALENDAR_IMPORT_CALENDAR_ID')) {
-                $this->calendarID = CALENDAR_IMPORT_CALENDAR_ID;
-            }
-            if (defined('CALENDAR_IMPORT_TARGET_IMPORT_ID')) {
-                $this->targetImportID = CALENDAR_IMPORT_TARGET_IMPORT_ID;
-            }
-            if (defined('CALENDAR_IMPORT_DEFAULT_BOARD_ID')) {
-                $this->boardID = CALENDAR_IMPORT_DEFAULT_BOARD_ID;
-            }
-            if (defined('CALENDAR_IMPORT_CREATE_THREADS')) {
-                $this->createThreads = (bool)CALENDAR_IMPORT_CREATE_THREADS;
-            }
-            if (defined('CALENDAR_IMPORT_CONVERT_TIMEZONE')) {
-                $this->convertTimezone = (bool)CALENDAR_IMPORT_CONVERT_TIMEZONE;
-            }
-            if (defined('CALENDAR_IMPORT_AUTO_MARK_PAST_READ')) {
-                $this->autoMarkPastRead = (bool)CALENDAR_IMPORT_AUTO_MARK_PAST_READ;
-            }
-            if (defined('CALENDAR_IMPORT_MARK_UPDATED_UNREAD')) {
-                $this->markUpdatedUnread = (bool)CALENDAR_IMPORT_MARK_UPDATED_UNREAD;
-            }
-            if (defined('CALENDAR_IMPORT_MAX_EVENTS')) {
-                $this->maxEvents = CALENDAR_IMPORT_MAX_EVENTS;
-            }
-            if (defined('CALENDAR_IMPORT_LOG_LEVEL')) {
-                $this->logLevel = CALENDAR_IMPORT_LOG_LEVEL;
-            }
+            $this->icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
+            $this->calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
+            $this->targetImportID = (int)$this->getOptionValue('calendar_import_target_import_id', 0);
+            $this->boardID = (int)$this->getOptionValue('calendar_import_default_board_id', 0);
+            $this->createThreads = (bool)$this->getOptionValue('calendar_import_create_threads', 1);
+            $this->convertTimezone = (bool)$this->getOptionValue('calendar_import_convert_timezone', 1);
+            $this->autoMarkPastRead = (bool)$this->getOptionValue('calendar_import_auto_mark_past_read', 1);
+            $this->markUpdatedUnread = (bool)$this->getOptionValue('calendar_import_mark_updated_unread', 1);
+            $this->maxEvents = (int)$this->getOptionValue('calendar_import_max_events', 100);
+            $this->logLevel = $this->getOptionValue('calendar_import_log_level', 'info');
         }
         
         $this->collectDebugInfo();
+    }
+    
+    protected function getOptionValue($optionName, $default = null) {
+        try {
+            $sql = "SELECT optionValue FROM wcf".WCF_N."_option WHERE optionName = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$optionName]);
+            $row = $statement->fetchArray();
+            if ($row) {
+                return $row['optionValue'];
+            }
+        } catch (\Exception $e) {}
+        return $default;
     }
     
     protected function collectDebugInfo() {
@@ -78,9 +71,11 @@ class CalendarImportSettingsForm extends AbstractForm {
             'eventClasses' => [],
             'calendarPackages' => [],
             'cronjobs' => [],
+            'cronjobClasses' => [],
             'icsTest' => null,
             'calendars' => [],
-            'recentImports' => []
+            'recentImports' => [],
+            'dbTables' => []
         ];
         
         // Package info
@@ -105,7 +100,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             } catch (\Exception $e) {}
         }
         
-        // Options
+        // Options - direkt aus DB lesen
         try {
             $sql = "SELECT optionName, optionValue FROM wcf".WCF_N."_option WHERE optionName LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -168,27 +163,87 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         } catch (\Exception $e) {}
         
-        // Available calendars
-        try {
-            $sql = "SELECT calendarID, title FROM calendar1_calendar ORDER BY calendarID";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            while ($row = $statement->fetchArray()) {
-                $this->debugInfo['calendars'][] = $row;
+        // Check which calendar tables exist
+        $possibleTables = [
+            'calendar1_calendar',
+            'wcf1_calendar',
+            'calendar1_event',
+            'wcf1_calendar_event'
+        ];
+        foreach ($possibleTables as $table) {
+            try {
+                $sql = "SHOW TABLES LIKE ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$table]);
+                $this->debugInfo['dbTables'][$table] = ($statement->fetchColumn() !== false);
+            } catch (\Exception $e) {
+                $this->debugInfo['dbTables'][$table] = false;
             }
-        } catch (\Exception $e) {}
+        }
         
-        // Cronjob status
+        // Available calendars - try different table structures
+        $calendarQueries = [
+            "SELECT calendarID, calendarID as title FROM calendar1_calendar ORDER BY calendarID",
+            "SELECT calendarID, title FROM calendar1_calendar ORDER BY calendarID"
+        ];
+        
+        foreach ($calendarQueries as $sql) {
+            try {
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                while ($row = $statement->fetchArray()) {
+                    $this->debugInfo['calendars'][] = $row;
+                }
+                if (!empty($this->debugInfo['calendars'])) {
+                    break;
+                }
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+        
+        // If still no calendars, try to get from language items
+        if (empty($this->debugInfo['calendars'])) {
+            try {
+                $sql = "SELECT c.calendarID, COALESCE(l.languageItemValue, CONCAT('Kalender #', c.calendarID)) as title 
+                        FROM calendar1_calendar c 
+                        LEFT JOIN wcf".WCF_N."_language_item l ON l.languageItem = CONCAT('calendar.calendar', c.calendarID)
+                        ORDER BY c.calendarID";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                while ($row = $statement->fetchArray()) {
+                    $this->debugInfo['calendars'][] = $row;
+                }
+            } catch (\Exception $e) {}
+        }
+        
+        // Cronjob status - search by className containing our package
         try {
-            $sql = "SELECT cronjobID, cronjobClassName, isDisabled, lastExec, nextExec, failCount 
+            $sql = "SELECT cronjobID, className, isDisabled, lastExec, nextExec, failCount 
                     FROM wcf".WCF_N."_cronjob 
-                    WHERE cronjobClassName LIKE ? OR cronjobClassName LIKE ?";
+                    WHERE className LIKE ? 
+                    OR className LIKE ?
+                    OR className LIKE ?";
             $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute(['%calendar%', '%ICal%']);
+            $statement->execute([
+                '%ICalImport%',
+                '%FixTimezone%', 
+                '%MarkPastEvents%'
+            ]);
             while ($row = $statement->fetchArray()) {
                 $this->debugInfo['cronjobs'][] = $row;
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            // Try alternative column name
+            try {
+                $sql = "SELECT * FROM wcf".WCF_N."_cronjob WHERE packageID = ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$this->debugInfo['package']['packageID'] ?? 0]);
+                while ($row = $statement->fetchArray()) {
+                    $this->debugInfo['cronjobs'][] = $row;
+                }
+            } catch (\Exception $e2) {}
+        }
         
         // Recent imported events
         try {
@@ -203,9 +258,10 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         } catch (\Exception $e) {}
         
-        // Test ICS URL if configured
-        if (!empty($this->icsUrl)) {
-            $this->debugInfo['icsTest'] = $this->testIcsUrl($this->icsUrl);
+        // Test ICS URL - use value from form or DB
+        $testUrl = !empty($this->icsUrl) ? $this->icsUrl : $this->getOptionValue('calendar_import_ics_url', '');
+        if (!empty($testUrl)) {
+            $this->debugInfo['icsTest'] = $this->testIcsUrl($testUrl);
         }
     }
     
@@ -228,7 +284,7 @@ class CalendarImportSettingsForm extends AbstractForm {
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.5.0'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.5.1'
             ]);
             $content = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -304,7 +360,13 @@ class CalendarImportSettingsForm extends AbstractForm {
         $this->updateOption('calendar_import_max_events', $this->maxEvents);
         $this->updateOption('calendar_import_log_level', $this->logLevel);
         
+        // Reset all caches
         \wcf\system\cache\builder\OptionCacheBuilder::getInstance()->reset();
+        
+        // Clear runtime cache
+        if (class_exists('wcf\system\cache\runtime\RuntimeCache')) {
+            \wcf\system\cache\runtime\RuntimeCache::getInstance()->flush();
+        }
         
         $this->saved();
         
