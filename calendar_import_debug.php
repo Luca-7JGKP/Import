@@ -10,8 +10,10 @@ use wcf\system\WCF;
 
 // Prüfen, ob der Benutzer eingeloggt ist
 if (!WCF::getUser()->userID) {
+    $loginUrl = htmlspecialchars(WCF::getPath() . 'index.php?login/', ENT_QUOTES, 'UTF-8');
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!DOCTYPE html>
+    ?>
+<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -30,11 +32,12 @@ if (!WCF::getUser()->userID) {
         <p>Der Zutritt zu dieser Seite ist Ihnen leider verwehrt.</p>
         <p>Sie müssen eingeloggt sein, um diese Debug-Seite aufrufen zu können.</p>
         <p style="margin-top: 30px;">
-            <a href="' . htmlspecialchars(WCF::getPath() . 'index.php?login/') . '">→ Zur Anmeldung</a>
+            <a href="<?= $loginUrl ?>">→ Zur Anmeldung</a>
         </p>
     </div>
 </body>
-</html>';
+</html>
+<?php
     exit;
 }
 
