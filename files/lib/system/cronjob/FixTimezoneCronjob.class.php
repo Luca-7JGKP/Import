@@ -33,8 +33,8 @@ class FixTimezoneCronjob extends AbstractCronjob
         $updateStatement = WCF::getDB()->prepareStatement($updateSql);
 
         while ($row = $statement->fetchArray()) {
-            $eventDateData = @\unserialize($row['eventDate']);
-            if (!$eventDateData) {
+            $eventDateData = \unserialize($row['eventDate']);
+            if ($eventDateData === false) {
                 continue;
             }
 
@@ -52,11 +52,11 @@ class FixTimezoneCronjob extends AbstractCronjob
                 $tz = new \DateTimeZone($timezone);
                 $dt = new \DateTime('@' . $row['startTime']);
                 $offset = $tz->getOffset($dt);
-            } catch (\Exception $e) {
+            } catch (\InvalidArgumentException $e) {
                 continue;
             }
 
-            if ($offset == 0) {
+            if ($offset === 0) {
                 continue;
             }
 
@@ -64,7 +64,7 @@ class FixTimezoneCronjob extends AbstractCronjob
             $dbStartTime = $row['startTime'];
 
             // Wenn DB-Zeit = Original + Offset, dann wurde der Offset doppelt addiert
-            if ($dbStartTime == $originalStartTime + $offset) {
+            if ($dbStartTime === $originalStartTime + $offset) {
                 $newStartTime = $row['startTime'] - $offset;
                 $newEndTime = $row['endTime'] - $offset;
                 $updateStatement->execute([$newStartTime, $newEndTime, $row['eventDateID']]);
