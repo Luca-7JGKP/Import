@@ -8,7 +8,7 @@
 set -e
 
 PLUGIN_NAME="com.lucaberwind.wcf.calendar.import"
-VERSION="1.3.2"
+VERSION="1.4.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🔨 Building WoltLab Plugin: $PLUGIN_NAME v$VERSION"
@@ -53,6 +53,7 @@ cp package.xml "$BUILD_DIR/" || { echo "❌ FEHLER: package.xml nicht gefunden!"
 [ -f "eventListener.xml" ] && cp eventListener.xml "$BUILD_DIR/"
 [ -f "options.xml" ] && cp options.xml "$BUILD_DIR/"
 [ -f "acpMenu.xml" ] && cp acpMenu.xml "$BUILD_DIR/"
+[ -f "cronjob.xml" ] && cp cronjob.xml "$BUILD_DIR/"
 [ -f "install.sql" ] && cp install.sql "$BUILD_DIR/"
 [ -f "uninstall.sql" ] && cp uninstall.sql "$BUILD_DIR/"
 
