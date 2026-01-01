@@ -33,3 +33,16 @@ CREATE TABLE IF NOT EXISTS wcf1_calendar_import_log (
     KEY importTime (importTime),
     KEY logLevel (logLevel)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Tabelle für UID-Mapping zur Event-Deduplizierung
+CREATE TABLE IF NOT EXISTS calendar1_ical_uid_map (
+    mapID INT(10) NOT NULL AUTO_INCREMENT,
+    eventID INT(10) NOT NULL,
+    icalUID VARCHAR(255) NOT NULL,
+    importID INT(10) DEFAULT NULL,
+    lastUpdated INT(10) NOT NULL DEFAULT 0,
+    PRIMARY KEY (mapID),
+    UNIQUE KEY icalUID (icalUID),
+    KEY eventID (eventID),
+    KEY importID (importID)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

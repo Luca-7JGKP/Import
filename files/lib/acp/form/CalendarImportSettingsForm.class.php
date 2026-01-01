@@ -18,8 +18,8 @@ class CalendarImportSettingsForm extends AbstractForm {
     public $neededPermissions = [];
     
     public $icsUrl = '';
-    public $calendarID = 0;
-    public $targetImportID = 0;
+    public $categoryID = 0;
+    public $importID = 0;
     public $boardID = 0;
     public $createThreads = true;
     public $convertTimezone = true;
@@ -30,7 +30,7 @@ class CalendarImportSettingsForm extends AbstractForm {
     public $debugInfo = [];
     public $testImportResult = null;
     public $availableCalendars = [];
-    public $calendarValidationError = '';
+    public $categoryValidationError = '';
     public $runImportNow = false;
     
     public function readData() {
@@ -51,8 +51,8 @@ class CalendarImportSettingsForm extends AbstractForm {
         
         if (empty($_POST)) {
             $this->icsUrl = $this->getOptionValue('calendar_import_ics_url', '');
-            $this->calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
-            $this->targetImportID = (int)$this->getOptionValue('calendar_import_target_import_id', 0);
+            $this->categoryID = (int)$this->getOptionValue('calendar_import_category_id', 0);
+            $this->importID = (int)$this->getOptionValue('calendar_import_import_id', 1);
             $this->boardID = (int)$this->getOptionValue('calendar_import_default_board_id', 0);
             $this->createThreads = (bool)$this->getOptionValue('calendar_import_create_threads', 1);
             $this->convertTimezone = (bool)$this->getOptionValue('calendar_import_convert_timezone', 1);
@@ -81,11 +81,11 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
             $this->testImportResult['steps'][] = ['name' => 'ICS-URL prüfen', 'status' => 'success', 'message' => 'URL vorhanden'];
             
-            $calendarID = (int)$this->getOptionValue('calendar_import_calendar_id', 0);
-            if ($calendarID <= 0) {
-                throw new \Exception('Keine gültige Kalender-ID konfiguriert.');
+            $categoryID = (int)$this->getOptionValue('calendar_import_category_id', 0);
+            if ($categoryID <= 0) {
+                throw new \Exception('Keine gültige Category-ID konfiguriert.');
             }
-            $this->testImportResult['steps'][] = ['name' => 'Kalender-ID prüfen', 'status' => 'success', 'message' => 'ID: ' . $calendarID];
+            $this->testImportResult['steps'][] = ['name' => 'Category-ID prüfen', 'status' => 'success', 'message' => 'ID: ' . $categoryID];
             
             $ch = curl_init();
             curl_setopt_array($ch, [
@@ -234,6 +234,10 @@ class CalendarImportSettingsForm extends AbstractForm {
             }
         }
         
+        // Note: Categories are not currently shown in debug info
+        // This is intentional as calendar1_category table doesn't exist
+        $this->debugInfo['note'] = 'Using categoryID from calendar1_event table, not from calendar table';
+        
         // If still no calendars found, try WoltLab Calendar API
         if (empty($this->debugInfo['calendars'])) {
             try {
@@ -319,6 +323,9 @@ class CalendarImportSettingsForm extends AbstractForm {
     protected function loadAvailableCalendars() {
         $calendars = [];
         
+        // Note: We're loading calendars for informational purposes only
+        // The actual events use categoryID, not calendarID
+        
         // Try calendar1_calendar table first (standard WoltLab Calendar)
         try {
             $sql = "SELECT calendarID, title FROM calendar1_calendar ORDER BY calendarID";
@@ -362,32 +369,14 @@ class CalendarImportSettingsForm extends AbstractForm {
         return $calendars;
     }
     
-    protected function validateCalendarExists($calendarID) {
-        if ($calendarID <= 0) {
+    protected function validateCategoryExists($categoryID) {
+        if ($categoryID <= 0) {
             return false;
         }
         
-        try {
-            // Try calendar1_calendar table first
-            $sql = "SELECT calendarID FROM calendar1_calendar WHERE calendarID = ?";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$calendarID]);
-            $calendar = $statement->fetchArray();
-            
-            if ($calendar) {
-                return true;
-            }
-            
-            // Fallback: try with dynamic table prefix
-            $sql = "SELECT calendarID FROM calendar".WCF_N."_calendar WHERE calendarID = ?";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$calendarID]);
-            $calendar = $statement->fetchArray();
-            
-            return (bool)$calendar;
-        } catch (\Exception $e) {
-            return false;
-        }
+        // Since calendar1_category table doesn't exist, we just check if categoryID is positive
+        // The actual validation happens when inserting into calendar1_event
+        return true;
     }
     
     protected function triggerManualImport() {
@@ -420,8 +409,8 @@ class CalendarImportSettingsForm extends AbstractForm {
         parent::readFormParameters();
         
         if (isset($_POST['icsUrl'])) $this->icsUrl = StringUtil::trim($_POST['icsUrl']);
-        if (isset($_POST['calendarID'])) $this->calendarID = intval($_POST['calendarID']);
-        if (isset($_POST['targetImportID'])) $this->targetImportID = intval($_POST['targetImportID']);
+        if (isset($_POST['categoryID'])) $this->categoryID = intval($_POST['categoryID']);
+        if (isset($_POST['importID'])) $this->importID = intval($_POST['importID']);
         if (isset($_POST['boardID'])) $this->boardID = intval($_POST['boardID']);
         $this->createThreads = isset($_POST['createThreads']);
         $this->convertTimezone = isset($_POST['convertTimezone']);
@@ -434,15 +423,15 @@ class CalendarImportSettingsForm extends AbstractForm {
     public function save() {
         parent::save();
         
-        // Validate calendar ID before saving
-        if ($this->calendarID > 0 && !$this->validateCalendarExists($this->calendarID)) {
-            $this->calendarValidationError = "Warnung: Kalender mit ID {$this->calendarID} wurde nicht gefunden. Bitte wählen Sie einen gültigen Kalender aus.";
+        // Validate category ID before saving
+        if ($this->categoryID > 0 && !$this->validateCategoryExists($this->categoryID)) {
+            $this->categoryValidationError = "Warnung: Category-ID {$this->categoryID} konnte nicht validiert werden. Stellen Sie sicher, dass die ID korrekt ist.";
             // Still save the value but show warning
         }
         
         $this->updateOption('calendar_import_ics_url', $this->icsUrl);
-        $this->updateOption('calendar_import_calendar_id', $this->calendarID);
-        $this->updateOption('calendar_import_target_import_id', $this->targetImportID);
+        $this->updateOption('calendar_import_category_id', $this->categoryID);
+        $this->updateOption('calendar_import_import_id', $this->importID);
         $this->updateOption('calendar_import_default_board_id', $this->boardID);
         $this->updateOption('calendar_import_create_threads', $this->createThreads ? 1 : 0);
         $this->updateOption('calendar_import_convert_timezone', $this->convertTimezone ? 1 : 0);
@@ -469,8 +458,8 @@ class CalendarImportSettingsForm extends AbstractForm {
         
         WCF::getTPL()->assign([
             'icsUrl' => $this->icsUrl,
-            'calendarID' => $this->calendarID,
-            'targetImportID' => $this->targetImportID,
+            'categoryID' => $this->categoryID,
+            'importID' => $this->importID,
             'boardID' => $this->boardID,
             'createThreads' => $this->createThreads,
             'convertTimezone' => $this->convertTimezone,
@@ -481,7 +470,7 @@ class CalendarImportSettingsForm extends AbstractForm {
             'debugInfo' => $this->debugInfo,
             'testImportResult' => $this->testImportResult,
             'availableCalendars' => $this->availableCalendars,
-            'calendarValidationError' => $this->calendarValidationError
+            'categoryValidationError' => $this->categoryValidationError
         ]);
     }
 }
