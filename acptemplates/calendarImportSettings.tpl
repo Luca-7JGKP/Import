@@ -71,6 +71,14 @@
                 <small>Überschreibt die categoryID aus dem Import. 0 = Kategorie aus Import verwenden.</small>
             </dd>
         </dl>
+        
+        <dl{if $errorField|isset && $errorField == 'userID'} class="formError"{/if}>
+            <dt><label for="userID">{lang}wcf.acp.calendar.import.userID{/lang}</label></dt>
+            <dd>
+                <input type="number" id="userID" name="userID" value="{$userID}" class="short" min="1">
+                <small>{lang}wcf.acp.calendar.import.userID.description{/lang}</small>
+            </dd>
+        </dl>
     </section>
     
     <section class="section">
