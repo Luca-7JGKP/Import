@@ -163,23 +163,14 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
         }
         
         try {
-            // Hole alle aktiven Benutzer
-            $sql = "SELECT userID FROM wcf".WCF_N."_user WHERE banned = 0 AND activationCode = 0";
+            // Verwende INSERT...SELECT für effiziente Batch-Operation
+            $sql = "INSERT IGNORE INTO wcf".WCF_N."_tracked_visit 
+                    (objectTypeID, objectID, userID, visitTime)
+                    SELECT ?, ?, userID, ?
+                    FROM wcf".WCF_N."_user
+                    WHERE banned = 0 AND activationCode = 0";
             $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            
-            $insertSql = "INSERT IGNORE INTO wcf".WCF_N."_tracked_visit 
-                          (objectTypeID, objectID, userID, visitTime) 
-                          VALUES (?, ?, ?, ?)";
-            $insertStatement = WCF::getDB()->prepareStatement($insertSql);
-            
-            while ($row = $statement->fetchArray()) {
-                try {
-                    $insertStatement->execute([$objectTypeID, $eventID, $row['userID'], TIME_NOW]);
-                } catch (\Exception $e) {
-                    // Ignoriere Duplikat-Fehler
-                }
-            }
+            $statement->execute([$objectTypeID, $eventID, TIME_NOW]);
         } catch (\Exception $e) {
             // Fehler loggen
         }

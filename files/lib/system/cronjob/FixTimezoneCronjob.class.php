@@ -26,7 +26,7 @@ class FixTimezoneCronjob extends AbstractCronjob
                 ORDER BY ed.startTime";
 
         $statement = WCF::getDB()->prepareStatement($sql);
-        $statement->execute([\TIME_NOW]);
+        $statement->execute([TIME_NOW]);
 
         $updateSql = "UPDATE calendar1_event_date SET startTime = ?, endTime = ? WHERE eventDateID = ?";
         $updateStatement = WCF::getDB()->prepareStatement($updateSql);

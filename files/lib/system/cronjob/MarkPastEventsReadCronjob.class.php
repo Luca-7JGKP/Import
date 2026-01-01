@@ -44,7 +44,7 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
         
         $statement = WCF::getDB()->prepareStatement($sql);
         // Nur Events der letzten 30 Tage prüfen (Performance)
-        $statement->execute([\TIME_NOW, \TIME_NOW - (30 * 86400)]);
+        $statement->execute([TIME_NOW, TIME_NOW - (30 * 86400)]);
         
         $pastEventIDs = [];
         while ($row = $statement->fetchArray()) {
@@ -70,19 +70,43 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
         }
         
         // Markiere alle abgelaufenen Events als gelesen für alle Benutzer
-        $insertSql = "INSERT IGNORE INTO wcf".WCF_N."_tracked_visit 
-                      (objectTypeID, objectID, userID, visitTime) 
-                      VALUES (?, ?, ?, ?)";
-        $insertStatement = WCF::getDB()->prepareStatement($insertSql);
+        // Verwende Batch-INSERT für bessere Performance
+        $batchSize = 100;
+        $values = [];
+        $parameters = [];
         
         foreach ($pastEventIDs as $eventID) {
             foreach ($userIDs as $userID) {
-                try {
-                    $insertStatement->execute([$objectTypeID, $eventID, $userID, \TIME_NOW]);
-                } catch (\Exception $e) {
-                    // Ignoriere Duplikat-Fehler
+                $values[] = "(?, ?, ?, ?)";
+                $parameters[] = $objectTypeID;
+                $parameters[] = $eventID;
+                $parameters[] = $userID;
+                $parameters[] = TIME_NOW;
+                
+                // Insert in Batches von 100
+                if (count($values) >= $batchSize) {
+                    $this->executeBatchInsert($values, $parameters);
+                    $values = [];
+                    $parameters = [];
                 }
             }
+        }
+        
+        // Verbleibende Werte einfügen
+        if (!empty($values)) {
+            $this->executeBatchInsert($values, $parameters);
+        }
+    }
+    
+    protected function executeBatchInsert($values, $parameters) {
+        try {
+            $sql = "INSERT IGNORE INTO wcf".WCF_N."_tracked_visit 
+                    (objectTypeID, objectID, userID, visitTime) 
+                    VALUES " . implode(', ', $values);
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute($parameters);
+        } catch (\Exception $e) {
+            // Ignoriere Fehler
         }
     }
     
