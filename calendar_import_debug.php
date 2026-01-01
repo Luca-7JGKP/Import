@@ -8,9 +8,10 @@ require_once(__DIR__ . '/global.php');
 
 use wcf\system\WCF;
 
-// Berechtigungsprüfung: Nur eingeloggte Benutzer erlauben
-if (!WCF::getUser()->userID) {
+// Berechtigungsprüfung: Nur Administratoren erlauben
+if (!WCF::getUser()->userID || !WCF::getSession()->getPermission('admin.general.canUseAcp')) {
     header('HTTP/1.1 403 Forbidden');
+    header('Content-Type: text/html; charset=utf-8');
     ?>
     <!DOCTYPE html>
     <html lang="de">
@@ -29,7 +30,8 @@ if (!WCF::getUser()->userID) {
     <body>
         <div class="error-container">
             <h1>🔒 Zugriff verweigert</h1>
-            <p>Sie müssen eingeloggt sein, um diese Seite aufrufen zu können.</p>
+            <p>Diese Seite ist nur für Administratoren zugänglich.</p>
+            <p>Bitte melden Sie sich mit einem Administrator-Konto an.</p>
             <p><a href="index.php?login/">→ Zur Anmeldung</a></p>
         </div>
     </body>
