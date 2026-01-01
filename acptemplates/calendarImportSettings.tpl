@@ -11,11 +11,11 @@
     <woltlab-core-notice type="success">{lang}wcf.global.success.edit{/lang}</woltlab-core-notice>
 {/if}
 
-{if $calendarValidationError}
-    <woltlab-core-notice type="warning">{$calendarValidationError}</woltlab-core-notice>
+{if $categoryValidationError|isset && $categoryValidationError}
+    <woltlab-core-notice type="warning">{$categoryValidationError}</woltlab-core-notice>
 {/if}
 
-{if $testImportResult}
+{if $testImportResult|isset && $testImportResult}
     {if $testImportResult.success}
         <woltlab-core-notice type="success">
             <strong>Manueller Import ausgeführt</strong><br>
@@ -29,7 +29,7 @@
     {/if}
 {/if}
 
-{if $errorField}
+{if $errorField|isset && $errorField}
     <woltlab-core-notice type="error">{lang}wcf.global.form.error{/lang}</woltlab-core-notice>
 {/if}
 
@@ -37,31 +37,38 @@
     <section class="section">
         <h2 class="sectionTitle">ICS-Import Einstellungen</h2>
         
-        <dl{if $errorField == 'icsUrl'} class="formError"{/if}>
+        <dl{if $errorField|isset && $errorField == 'icsUrl'} class="formError"{/if}>
             <dt><label for="icsUrl">ICS-URL</label></dt>
             <dd>
                 <input type="text" id="icsUrl" name="icsUrl" value="{$icsUrl}" class="long">
-                <small>URL zur ICS-Datei (z.B. https://example.com/calendar.ics)</small>
+                <small>URL zur ICS-Datei. Leer lassen um die URL aus der Ziel-Import-ID zu verwenden.</small>
             </dd>
         </dl>
         
-        <dl{if $errorField == 'calendarID'} class="formError"{/if}>
-            <dt><label for="calendarID">Ziel-Kalender</label></dt>
+        <dl{if $errorField|isset && $errorField == 'targetImportID'} class="formError"{/if}>
+            <dt><label for="targetImportID">Ziel-Import-ID</label></dt>
             <dd>
-                {if $availableCalendars|count > 0}
-                    <select id="calendarID" name="calendarID" class="medium">
-                        <option value="0"{if $calendarID == 0} selected{/if}>-- Bitte wählen --</option>
-                        {foreach from=$availableCalendars item=cal}
-                            <option value="{$cal.calendarID}"{if $calendarID == $cal.calendarID} selected{/if}>
-                                ID: {$cal.calendarID}{if $cal.title} - {$cal.title}{/if}
+                {if $availableImports|isset && $availableImports|count > 0}
+                    <select id="targetImportID" name="targetImportID" class="medium">
+                        <option value="0"{if $targetImportID == 0} selected{/if}>-- Bitte wählen --</option>
+                        {foreach from=$availableImports item=import}
+                            <option value="{$import.importID}"{if $targetImportID == $import.importID} selected{/if}>
+                                ID: {$import.importID} - Category: {$import.categoryID}
                             </option>
                         {/foreach}
                     </select>
-                    <small>Wählen Sie den Kalender aus, in den die Events importiert werden sollen</small>
                 {else}
-                    <input type="number" id="calendarID" name="calendarID" value="{$calendarID}" class="short" min="1">
-                    <small>ID des Kalenders in den importiert werden soll (keine Kalender verfügbar zur Auswahl)</small>
+                    <input type="number" id="targetImportID" name="targetImportID" value="{$targetImportID}" class="short" min="0">
                 {/if}
+                <small>ID aus der calendar1_event_import Tabelle</small>
+            </dd>
+        </dl>
+        
+        <dl{if $errorField|isset && $errorField == 'categoryID'} class="formError"{/if}>
+            <dt><label for="categoryID">Kategorie-ID (optional)</label></dt>
+            <dd>
+                <input type="number" id="categoryID" name="categoryID" value="{$categoryID}" class="short" min="0">
+                <small>Überschreibt die categoryID aus dem Import. 0 = Kategorie aus Import verwenden.</small>
             </dd>
         </dl>
     </section>
@@ -73,7 +80,6 @@
             <dt></dt>
             <dd>
                 <label><input type="checkbox" name="autoMarkPastRead" value="1"{if $autoMarkPastRead} checked{/if}> Vergangene Events automatisch als gelesen markieren</label>
-                <small>Events deren Datum in der Vergangenheit liegt werden automatisch als gelesen markiert</small>
             </dd>
         </dl>
         
@@ -81,7 +87,6 @@
             <dt></dt>
             <dd>
                 <label><input type="checkbox" name="markUpdatedUnread" value="1"{if $markUpdatedUnread} checked{/if}> Aktualisierte Events als ungelesen markieren</label>
-                <small>Wenn ein Event aktualisiert wird, wird es wieder als ungelesen markiert</small>
             </dd>
         </dl>
     </section>
@@ -89,11 +94,11 @@
     <section class="section">
         <h2 class="sectionTitle">Allgemein</h2>
         
-        <dl{if $errorField == 'boardID'} class="formError"{/if}>
+        <dl{if $errorField|isset && $errorField == 'boardID'} class="formError"{/if}>
             <dt><label for="boardID">Forum-ID für Threads</label></dt>
             <dd>
                 <input type="number" id="boardID" name="boardID" value="{$boardID}" class="short" min="0">
-                <small>ID des Forums in dem Threads erstellt werden (0 = deaktiviert)</small>
+                <small>ID des Forums (0 = deaktiviert)</small>
             </dd>
         </dl>
         
@@ -101,7 +106,6 @@
             <dt></dt>
             <dd>
                 <label><input type="checkbox" name="createThreads" value="1"{if $createThreads} checked{/if}> Threads für Events erstellen</label>
-                <small>Erstellt automatisch einen Forum-Thread für jedes importierte Event</small>
             </dd>
         </dl>
         
@@ -109,7 +113,6 @@
             <dt></dt>
             <dd>
                 <label><input type="checkbox" name="convertTimezone" value="1"{if $convertTimezone} checked{/if}> Zeitzone konvertieren</label>
-                <small>Konvertiert UTC-Zeiten aus der ICS-Datei in die lokale Zeitzone</small>
             </dd>
         </dl>
     </section>
@@ -117,15 +120,14 @@
     <section class="section">
         <h2 class="sectionTitle">Erweitert</h2>
         
-        <dl{if $errorField == 'maxEvents'} class="formError"{/if}>
+        <dl{if $errorField|isset && $errorField == 'maxEvents'} class="formError"{/if}>
             <dt><label for="maxEvents">Maximale Events</label></dt>
             <dd>
                 <input type="number" id="maxEvents" name="maxEvents" value="{$maxEvents}" class="short" min="1" max="10000">
-                <small>Maximale Anzahl Events pro Import</small>
             </dd>
         </dl>
         
-        <dl{if $errorField == 'logLevel'} class="formError"{/if}>
+        <dl{if $errorField|isset && $errorField == 'logLevel'} class="formError"{/if}>
             <dt><label for="logLevel">Log-Level</label></dt>
             <dd>
                 <select id="logLevel" name="logLevel">
@@ -134,7 +136,6 @@
                     <option value="info"{if $logLevel == 'info'} selected{/if}>Info</option>
                     <option value="debug"{if $logLevel == 'debug'} selected{/if}>Debug</option>
                 </select>
-                <small>Detailgrad der Protokollierung</small>
             </dd>
         </dl>
     </section>
@@ -156,7 +157,7 @@
         <p style="color: #888;">Zeitstempel: {$debugInfo.timestamp}</p>
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">Plugin</h3>
-        {if $debugInfo.package}
+        {if $debugInfo.package|isset && $debugInfo.package}
             <div style="background: #143d1e; padding: 10px; border-radius: 4px;">
                 ✅ {$debugInfo.package.package} v{$debugInfo.package.packageVersion}
             </div>
@@ -165,7 +166,7 @@
         {/if}
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">ICS-URL Test</h3>
-        {if $debugInfo.icsTest}
+        {if $debugInfo.icsTest|isset && $debugInfo.icsTest}
             {if $debugInfo.icsTest.reachable}
                 <div style="background: #143d1e; padding: 10px; border-radius: 4px;">
                     ✅ Erreichbar - {$debugInfo.icsTest.eventCount} Events gefunden
@@ -179,83 +180,92 @@
             <div style="background: #3d3414; padding: 10px; border-radius: 4px;">⚠️ Keine URL konfiguriert</div>
         {/if}
         
-        <h3 style="color: #00d4ff; margin: 15px 0 10px;">Verfügbare Kalender</h3>
-        {if $debugInfo.calendars|count > 0}
+        <h3 style="color: #00d4ff; margin: 15px 0 10px;">Verfügbare Imports</h3>
+        {if $debugInfo.imports|isset && $debugInfo.imports|count > 0}
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            {foreach from=$debugInfo.calendars item=cal}
+            {foreach from=$debugInfo.imports item=import}
                 <span style="background: #0f3460; padding: 5px 12px; border-radius: 4px;">
-                    ID: <strong>{$cal.calendarID}</strong>
-                    {if $cal.title} - {$cal.title}{/if}
-                    {if $cal.calendarID == $calendarID}
-                        <span style="background: #143d1e; color: #00ff88; padding: 2px 6px; border-radius: 3px; margin-left: 5px; font-size: 0.85em;">✓ Aktiv</span>
+                    ID: <strong>{$import.importID}</strong> - Cat: {$import.categoryID}
+                    {if $import.importID == $targetImportID}
+                        <span style="background: #143d1e; color: #00ff88; padding: 2px 6px; border-radius: 3px; margin-left: 5px;">✓ Aktiv</span>
                     {/if}
                 </span>
             {/foreach}
             </div>
         {else}
-            <div style="background: #3d3414; padding: 10px; border-radius: 4px;">⚠️ Keine Kalender gefunden - bitte installieren Sie das WoltLab Calendar Plugin</div>
+            <div style="background: #3d3414; padding: 10px; border-radius: 4px;">⚠️ Keine Imports gefunden</div>
+        {/if}
+        
+        <h3 style="color: #00d4ff; margin: 15px 0 10px;">Datenbank-Tabellen</h3>
+        {if $debugInfo.dbTables|isset}
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            {foreach from=$debugInfo.dbTables key=tableName item=exists}
+                <span style="background: {if $exists}#143d1e{else}#3d1414{/if}; padding: 5px 12px; border-radius: 4px;">
+                    {if $exists}✅{else}❌{/if} {$tableName}
+                </span>
+            {/foreach}
+            </div>
         {/if}
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">Cronjobs</h3>
-        {if $debugInfo.cronjobs|count > 0}
+        {if $debugInfo.cronjobs|isset && $debugInfo.cronjobs|count > 0}
             {foreach from=$debugInfo.cronjobs item=cron}
-                <div style="background: #0f3460; padding: 8px 12px; border-radius: 4px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="background: #0f3460; padding: 8px 12px; border-radius: 4px; margin-bottom: 5px;">
                     <span style="font-family: monospace; font-size: 11px;">
                         {if $cron.className|isset}{$cron.className}{else}ID: {$cron.cronjobID}{/if}
                     </span>
-                    <span>
-                        {if $cron.isDisabled}
-                            <span style="color:#ff6b6b;">🔴 Deaktiviert</span>
-                        {else}
-                            <span style="color:#00ff88;">🟢 Aktiv</span>
-                            {if $cron.nextExec > 0}
-                                <span style="color:#888; font-size: 0.9em; margin-left: 8px;">
-                                    Nächster Lauf: {$cron.nextExec|date:'d.m.Y H:i'}
-                                </span>
-                            {/if}
-                        {/if}
-                    </span>
+                    {if $cron.isDisabled}
+                        <span style="color:#ff6b6b; margin-left: 10px;">🔴 Deaktiviert</span>
+                    {else}
+                        <span style="color:#00ff88; margin-left: 10px;">🟢 Aktiv</span>
+                    {/if}
                 </div>
             {/foreach}
         {else}
-            <div style="background: #3d1414; padding: 10px; border-radius: 4px;">❌ Keine Cronjobs gefunden - Plugin neu installieren!</div>
+            <div style="background: #3d1414; padding: 10px; border-radius: 4px;">❌ Keine Cronjobs gefunden</div>
         {/if}
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">PHP-Klassen</h3>
-        {foreach from=$debugInfo.cronjobClasses key=className item=classData}
-            <div style="margin-bottom: 5px;">
-                {if $classData.exists}<span style="color:#00ff88;">✅</span>{else}<span style="color:#ff6b6b;">❌</span>{/if}
-                <span style="font-family: monospace; font-size: 11px; margin-left: 8px;">{$className}</span>
-            </div>
-        {/foreach}
-        
-        <h3 style="color: #00d4ff; margin: 15px 0 10px;">Aktuelle Optionen</h3>
-        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
-            <tr style="background: #0f3460;">
-                <th style="padding: 8px; text-align: left;">Option</th>
-                <th style="padding: 8px; text-align: left;">Wert</th>
-            </tr>
-            {foreach from=$debugInfo.options key=optionName item=optionData}
-            <tr style="border-bottom: 1px solid #2d3a5c;">
-                <td style="padding: 6px; font-family: monospace; font-size: 11px;">{$optionName}</td>
-                <td style="padding: 6px;">{$optionData.value}</td>
-            </tr>
+        {if $debugInfo.cronjobClasses|isset}
+            {foreach from=$debugInfo.cronjobClasses key=className item=classData}
+                <div style="margin-bottom: 5px;">
+                    {if $classData.exists}<span style="color:#00ff88;">✅</span>{else}<span style="color:#ff6b6b;">❌</span>{/if}
+                    <span style="font-family: monospace; font-size: 11px; margin-left: 8px;">{$className}</span>
+                </div>
             {/foreach}
-        </table>
+        {/if}
+        
+        <h3 style="color: #00d4ff; margin: 15px 0 10px;">Optionen</h3>
+        {if $debugInfo.options|isset}
+            <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                <tr style="background: #0f3460;">
+                    <th style="padding: 8px; text-align: left;">Option</th>
+                    <th style="padding: 8px; text-align: left;">Wert</th>
+                </tr>
+                {foreach from=$debugInfo.options key=optionName item=optionData}
+                <tr style="border-bottom: 1px solid #2d3a5c;">
+                    <td style="padding: 6px; font-family: monospace; font-size: 11px;">{$optionName}</td>
+                    <td style="padding: 6px;">{$optionData.value}</td>
+                </tr>
+                {/foreach}
+            </table>
+        {/if}
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">Event-Listener</h3>
-        <div style="background: {if $debugInfo.eventListeners|count > 0}#143d1e{else}#3d1414{/if}; padding: 10px; border-radius: 4px;">
-            {if $debugInfo.eventListeners|count > 0}
+        <div style="background: {if $debugInfo.eventListeners|isset && $debugInfo.eventListeners|count > 0}#143d1e{else}#3d1414{/if}; padding: 10px; border-radius: 4px;">
+            {if $debugInfo.eventListeners|isset && $debugInfo.eventListeners|count > 0}
                 ✅ {$debugInfo.eventListeners|count} Event-Listener registriert
             {else}
-                ❌ Keine Event-Listener - Plugin neu installieren!
+                ❌ Keine Event-Listener
             {/if}
         </div>
         
         <h3 style="color: #00d4ff; margin: 15px 0 10px;">Kalender-Pakete</h3>
-        {foreach from=$debugInfo.calendarPackages item=pkg}
-            <div style="font-size: 12px; padding: 3px 0;">{$pkg.package} v{$pkg.packageVersion}</div>
-        {/foreach}
+        {if $debugInfo.calendarPackages|isset}
+            {foreach from=$debugInfo.calendarPackages item=pkg}
+                <div style="font-size: 12px; padding: 3px 0;">{$pkg.package} v{$pkg.packageVersion}</div>
+            {/foreach}
+        {/if}
     </div>
 </section>
 
