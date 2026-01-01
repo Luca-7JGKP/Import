@@ -20,12 +20,6 @@
                 <defaultvalue>0</defaultvalue>
             </option>
             
-            <option name="calendar_import_target_import_id">
-                <categoryname>calendar.import</categoryname>
-                <optiontype>integer</optiontype>
-                <defaultvalue>0</defaultvalue>
-            </option>
-            
             <option name="calendar_import_default_board_id">
                 <categoryname>calendar.import</categoryname>
                 <optiontype>integer</optiontype>
