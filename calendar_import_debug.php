@@ -8,8 +8,37 @@ require_once(__DIR__ . '/global.php');
 
 use wcf\system\WCF;
 
-if (!WCF::getSession()->getPermission('admin.general.canUseAcp')) {
-    die('Zugriff verweigert. Bitte als Administrator einloggen.');
+// Prüfen, ob der Benutzer eingeloggt ist
+if (!WCF::getUser()->userID) {
+    $loginUrl = htmlspecialchars(WCF::getPath() . 'index.php?login/', ENT_QUOTES, 'UTF-8');
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Zugriff verweigert</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; padding: 40px; text-align: center; }
+        .error-box { background: #3d1414; padding: 30px; border-radius: 8px; margin: 20px auto; max-width: 600px; border-left: 4px solid #ff6b6b; }
+        h1 { color: #ff6b6b; }
+        a { color: #00d4ff; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="error-box">
+        <h1>🔒 Zugriff verweigert</h1>
+        <p>Der Zutritt zu dieser Seite ist Ihnen leider verwehrt.</p>
+        <p>Sie müssen eingeloggt sein, um diese Debug-Seite aufrufen zu können.</p>
+        <p style="margin-top: 30px;">
+            <a href="<?= $loginUrl ?>">→ Zur Anmeldung</a>
+        </p>
+    </div>
+</body>
+</html>
+<?php
+    exit;
 }
 
 header('Content-Type: text/html; charset=utf-8');
