@@ -2,6 +2,7 @@
 namespace wcf\system\cronjob;
 
 use wcf\data\cronjob\Cronjob;
+use wcf\data\user\User;
 use wcf\system\cronjob\AbstractCronjob;
 use wcf\system\WCF;
 
@@ -10,7 +11,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 2.0.1
+ * @version 2.1.0
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -19,6 +20,8 @@ class ICalImportCronjob extends AbstractCronjob
     protected $skippedCount = 0;
     protected $errors = [];
     protected $importID = null;
+    protected $eventUserID = 1;
+    protected $eventUsername = 'System';
     
     /**
      * Execute the import - can be called with Cronjob object or null for manual execution.
@@ -34,6 +37,9 @@ class ICalImportCronjob extends AbstractCronjob
         
         // Ensure UID mapping table exists
         $this->ensureUidMapTableExists();
+        
+        // Get configured user ID for event creation
+        $this->loadEventUser();
         
         // Get ICS URL from config or from calendar1_event_import
         $icsUrl = $this->getOption('CALENDAR_IMPORT_ICS_URL');
@@ -55,6 +61,7 @@ class ICalImportCronjob extends AbstractCronjob
         }
         
         $this->log('info', "Starte ICS-Import von: {$icsUrl}");
+        $this->log('info', "Event-Ersteller: {$this->eventUsername} (ID: {$this->eventUserID})");
         
         try {
             $icsContent = $this->fetchIcsContent($icsUrl);
@@ -83,6 +90,39 @@ class ICalImportCronjob extends AbstractCronjob
             
         } catch (\Exception $e) {
             $this->log('error', 'Import-Fehler: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Loads the configured user for event creation.
+     */
+    protected function loadEventUser()
+    {
+        $userID = (int)$this->getOption('CALENDAR_IMPORT_USER_ID', 1);
+        
+        if ($userID > 0) {
+            try {
+                $user = new User($userID);
+                if ($user->userID) {
+                    $this->eventUserID = $user->userID;
+                    $this->eventUsername = $user->username;
+                    return;
+                }
+            } catch (\Exception $e) {
+                $this->log('warning', "Benutzer mit ID {$userID} nicht gefunden, verwende System-Benutzer");
+            }
+        }
+        
+        // Fallback to user ID 1
+        try {
+            $user = new User(1);
+            if ($user->userID) {
+                $this->eventUserID = $user->userID;
+                $this->eventUsername = $user->username;
+            }
+        } catch (\Exception $e) {
+            $this->eventUserID = 1;
+            $this->eventUsername = 'System';
         }
     }
     
@@ -189,7 +229,7 @@ class ICalImportCronjob extends AbstractCronjob
         $context = stream_context_create([
             'http' => [
                 'timeout' => 30,
-                'user_agent' => 'WoltLab Calendar Import/2.0.0'
+                'user_agent' => 'WoltLab Calendar Import/2.1.0'
             ],
             'ssl' => [
                 'verify_peer' => false,
@@ -207,7 +247,7 @@ class ICalImportCronjob extends AbstractCronjob
                 CURLOPT_TIMEOUT => 30,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.0.0'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/2.1.0'
             ]);
             $content = curl_exec($ch);
             curl_close($ch);
@@ -401,15 +441,15 @@ class ICalImportCronjob extends AbstractCronjob
                 'repeatType' => ''
             ]);
             
-            // Use categoryID instead of calendarID (calendar1_event has categoryID, not calendarID!)
+            // Use configured user ID for event creation
             $sql = "INSERT INTO calendar1_event 
                     (categoryID, userID, username, subject, message, time, enableHtml, eventDate, location)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([
                 $categoryID ?: null,
-                WCF::getUser()->userID ?: 1,
-                WCF::getUser()->username ?: 'System',
+                $this->eventUserID,
+                $this->eventUsername,
                 $event['summary'],
                 $event['description'] ?: $event['summary'],
                 TIME_NOW,
@@ -434,7 +474,7 @@ class ICalImportCronjob extends AbstractCronjob
             // Save UID mapping
             $this->saveUidMapping($eventID, $event['uid']);
             
-            $this->log('debug', "Event erstellt: {$event['summary']} (ID: {$eventID})");
+            $this->log('debug', "Event erstellt: {$event['summary']} (ID: {$eventID}, Ersteller: {$this->eventUsername})");
             
         } catch (\Exception $e) {
             $this->log('error', "Fehler beim Erstellen: {$event['summary']} - " . $e->getMessage());
