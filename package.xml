@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<package name="com.lucaberwind.wcf.calendar.import" xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/6.0/package.xsd">
+<package name="com.lucaberwind.wcf.calendar.import" xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/2019/package.xsd">
     <packageinformation>
         <packagename>Kalender iCal Import</packagename>
         <packagename language="en">Calendar iCal Import</packagename>
-        <packagedescription>Importiert Kalender-Events aus iCal-Dateien mit erweiterter Gelesen/Ungelesen-Logik und automatischem ICS-URL-Import.</packagedescription>
-        <packagedescription language="en">Imports calendar events from iCal files with extended read/unread logic and automatic ICS URL import.</packagedescription>
-        <version>1.6.1</version>
+        <packagedescription>Importiert Kalender-Events aus iCal-Dateien mit erweiterter Gelesen/Ungelesen-Logik, automatischem ICS-URL-Import und dynamischer Tabellen-Erkennung.</packagedescription>
+        <packagedescription language="en">Imports calendar events from iCal files with extended read/unread logic, automatic ICS URL import and dynamic table detection.</packagedescription>
+        <version>2.0.0</version>
         <date>2026-01-01</date>
     </packageinformation>
     
