@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<data xmlns="http://www.woltlab.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.woltlab.com http://www.woltlab.com/XSD/5.4/cronjob.xsd">
+    <import>
+        <cronjob name="com.lucaberwind.wcf.calendar.import.fixTimezone">
+            <classname>wcf\system\cronjob\FixTimezoneCronjob</classname>
+            <description>Korrigiert Timezone-Offset nach ICS-Import</description>
+            <description language="en">Fixes timezone offset after ICS import</description>
+            <startminute>5,35</startminute>
+            <starthour>*</starthour>
+            <startdom>*</startdom>
+            <startmonth>*</startmonth>
+            <startdow>*</startdow>
+            <canbeedited>1</canbeedited>
+            <canbedisabled>1</canbedisabled>
+        </cronjob>
+    </import>
+</data>
