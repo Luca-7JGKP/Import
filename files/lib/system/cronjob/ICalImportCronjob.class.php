@@ -10,7 +10,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 1.5.0
+ * @version 1.6.2
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -31,18 +31,31 @@ class ICalImportCronjob extends AbstractCronjob
             return;
         }
         
+        // Automatische Kalender-Erkennung wenn keine ID konfiguriert
         if ($calendarID <= 0) {
-            $this->log('error', 'Keine Kalender-ID konfiguriert');
-            return;
+            $this->log('warning', 'Keine Kalender-ID konfiguriert - versuche automatische Erkennung');
+            $calendarID = $this->findFirstAvailableCalendar();
+            if ($calendarID <= 0) {
+                $this->log('error', 'Kein Kalender gefunden. Bitte erstellen Sie zuerst einen Kalender.');
+                return;
+            }
+            $this->log('info', "Automatisch erkannter Kalender: ID {$calendarID}");
         }
         
-        // Validate calendar exists
+        // Validiere dass Kalender existiert
         if (!$this->validateCalendarExists($calendarID)) {
-            $this->log('error', "Kalender mit ID {$calendarID} existiert nicht. Bitte überprüfen Sie die Kalender-ID in den Einstellungen.");
-            return;
+            $this->log('error', "Kalender mit ID {$calendarID} existiert nicht!");
+            $fallbackID = $this->findFirstAvailableCalendar();
+            if ($fallbackID > 0) {
+                $this->log('warning', "Verwende Fallback-Kalender mit ID {$fallbackID}");
+                $calendarID = $fallbackID;
+            } else {
+                $this->log('error', 'Kein gültiger Kalender verfügbar. Import abgebrochen.');
+                return;
+            }
         }
         
-        $this->log('info', "Starte ICS-Import von: {$icsUrl}");
+        $this->log('info', "Starte ICS-Import von: {$icsUrl} in Kalender {$calendarID}");
         
         try {
             $icsContent = $this->fetchIcsContent($icsUrl);
@@ -63,8 +76,68 @@ class ICalImportCronjob extends AbstractCronjob
             
             $this->log('info', "Import abgeschlossen: {$this->importedCount} neu, {$this->updatedCount} aktualisiert, {$this->skippedCount} übersprungen");
             
+            // Log in Import-Log Tabelle
+            $this->logImportResult($calendarID, count($events));
+            
         } catch (\Exception $e) {
             $this->log('error', 'Import-Fehler: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Findet den ersten verfügbaren Kalender.
+     */
+    protected function findFirstAvailableCalendar()
+    {
+        try {
+            $sql = "SELECT calendarID FROM calendar1_calendar ORDER BY calendarID ASC LIMIT 1";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute();
+            $row = $statement->fetchArray();
+            return $row ? (int)$row['calendarID'] : 0;
+        } catch (\Exception $e) {
+            $this->log('error', 'Fehler bei Kalender-Suche: ' . $e->getMessage());
+            return 0;
+        }
+    }
+    
+    /**
+     * Gibt alle verfügbaren Kalender zurück (statische Methode für ACP-Formular).
+     */
+    public static function getAvailableCalendars()
+    {
+        $calendars = [];
+        try {
+            $sql = "SELECT calendarID, title FROM calendar1_calendar ORDER BY title ASC";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute();
+            while ($row = $statement->fetchArray()) {
+                $calendars[$row['calendarID']] = $row['title'];
+            }
+        } catch (\Exception $e) {}
+        return $calendars;
+    }
+    
+    /**
+     * Loggt das Import-Ergebnis in die Datenbank.
+     */
+    protected function logImportResult($calendarID, $totalEvents)
+    {
+        try {
+            $sql = "INSERT INTO calendar1_event_import_log 
+                    (calendarID, importTime, eventsFound, eventsImported, eventsUpdated, eventsSkipped)
+                    VALUES (?, ?, ?, ?, ?, ?)";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([
+                $calendarID,
+                TIME_NOW,
+                $totalEvents,
+                $this->importedCount,
+                $this->updatedCount,
+                $this->skippedCount
+            ]);
+        } catch (\Exception $e) {
+            // Tabelle existiert möglicherweise nicht - ignorieren
         }
     }
     
@@ -73,7 +146,7 @@ class ICalImportCronjob extends AbstractCronjob
         $context = stream_context_create([
             'http' => [
                 'timeout' => 30,
-                'user_agent' => 'WoltLab Calendar Import/1.5.0'
+                'user_agent' => 'WoltLab Calendar Import/1.6.2'
             ],
             'ssl' => [
                 'verify_peer' => false,
@@ -91,7 +164,7 @@ class ICalImportCronjob extends AbstractCronjob
                 CURLOPT_TIMEOUT => 30,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.5.0'
+                CURLOPT_USERAGENT => 'WoltLab Calendar Import/1.6.2'
             ]);
             $content = curl_exec($ch);
             curl_close($ch);
