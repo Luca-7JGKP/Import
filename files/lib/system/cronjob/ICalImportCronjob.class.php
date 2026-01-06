@@ -195,20 +195,13 @@ class ICalImportCronjob extends AbstractCronjob
     protected function getDefaultCategoryID()
     {
         try {
-            // Fallback 1: Try to get categoryID from calendar1_event_import
-            $sql = "SELECT categoryID FROM calendar1_event_import WHERE isDisabled = 0 AND categoryID IS NOT NULL LIMIT 1";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            $row = $statement->fetchArray();
-            if ($row && $row['categoryID']) {
-                return (int)$row['categoryID'];
-            }
-            
-            // Fallback 2: Get first calendar category
-            $sql = "SELECT c.categoryID FROM wcf" . WCF_N . "_category c 
+            // Fallback: Get first calendar category from wcf1_category
+            $sql = "SELECT c.categoryID 
+                    FROM wcf" . WCF_N . "_category c 
                     JOIN wcf" . WCF_N . "_object_type ot ON c.objectTypeID = ot.objectTypeID 
                     WHERE ot.objectType = 'com.woltlab.calendar.category' 
-                    ORDER BY c.categoryID LIMIT 1";
+                    ORDER BY c.categoryID 
+                    LIMIT 1";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             $row = $statement->fetchArray();
@@ -216,7 +209,7 @@ class ICalImportCronjob extends AbstractCronjob
                 return (int)$row['categoryID'];
             }
             
-            // Fallback 3: Last resort - return 1
+            // Last resort fallback - return 1
             return 1;
         } catch (\Exception $e) {
             $this->log('error', 'Fehler beim Ermitteln der Standard-Kategorie: ' . $e->getMessage());

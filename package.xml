@@ -50,11 +50,4 @@
         <instruction type="acpMenu">acpMenu.xml</instruction>
         <instruction type="cronjob">cronjob.xml</instruction>
     </instructions>
-</package></instruction>
-        <instruction type="language">language/*.xml</instruction>
-        <instruction type="eventListener">eventListener.xml</instruction>
-        <instruction type="option">options.xml</instruction>
-        <instruction type="acpMenu">acpMenu.xml</instruction>
-        <instruction type="cronjob">cronjob.xml</instruction>
-    </instructions>
 </package>
