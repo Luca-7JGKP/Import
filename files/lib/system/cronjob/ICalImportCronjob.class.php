@@ -1,6 +1,8 @@
 <?php
 namespace wcf\system\cronjob;
 
+use calendar\data\event\CalendarEventAction;
+use calendar\data\event\CalendarEvent;
 use wcf\data\cronjob\Cronjob;
 use wcf\data\user\User;
 use wcf\system\cronjob\AbstractCronjob;
@@ -468,6 +470,53 @@ class ICalImportCronjob extends AbstractCronjob
         try {
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
+            // Try using WoltLab API first
+            if (class_exists('calendar\data\event\CalendarEventAction')) {
+                try {
+                    // Verwende WoltLab API statt direktem SQL
+                    $action = new CalendarEventAction([], 'create', [
+                        'data' => [
+                            'categoryID' => $categoryID,
+                            'userID' => $this->eventUserID,
+                            'username' => $this->eventUsername,
+                            'subject' => $event['summary'],
+                            'message' => $event['description'] ?: $event['summary'],
+                            'time' => TIME_NOW,
+                            'enableHtml' => 0,
+                            'location' => $event['location'] ?: '',
+                            'enableParticipation' => 1,
+                            'participationIsPublic' => 1,
+                            'maxCompanions' => 99,
+                            'participationIsChangeable' => 1,
+                            'maxParticipants' => 0,
+                            'participationEndTime' => $event['dtstart'],
+                            'inviteOnly' => 0
+                        ],
+                        'eventDateData' => [
+                            'startTime' => $event['dtstart'],
+                            'endTime' => $endTime,
+                            'isFullDay' => $event['allday'] ? 1 : 0,
+                            'timezone' => 'Europe/Berlin',
+                            'repeatType' => ''
+                        ]
+                    ]);
+                    
+                    $result = $action->executeAction();
+                    $calendarEvent = $result['returnValues'];
+                    $eventID = $calendarEvent->eventID;
+                    
+                    // UID-Mapping speichern
+                    $this->saveUidMapping($eventID, $event['uid']);
+                    
+                    $this->log('debug', "Event erstellt via API: {$event['summary']} (ID: {$eventID})");
+                    return;
+                    
+                } catch (\Exception $apiException) {
+                    $this->log('warning', "WoltLab API fehlgeschlagen, nutze SQL-Fallback: " . $apiException->getMessage());
+                }
+            }
+            
+            // Fallback to direct SQL if API is not available or failed
             $eventDateData = serialize([
                 'startTime' => $event['dtstart'],
                 'endTime' => $endTime,
@@ -520,7 +569,7 @@ class ICalImportCronjob extends AbstractCronjob
             // V4.0: Save UID mapping for EVERY event to prevent duplicates!
             $this->saveUidMapping($eventID, $event['uid']);
             
-            $this->log('debug', "Event erstellt: {$event['summary']} (ID: {$eventID}, UID: {$event['uid']}, Kategorie: {$categoryID})");
+            $this->log('debug', "Event erstellt (SQL Fallback): {$event['summary']} (ID: {$eventID}, UID: {$event['uid']}, Kategorie: {$categoryID})");
             
         } catch (\Exception $e) {
             $this->log('error', "Fehler beim Erstellen: {$event['summary']} - " . $e->getMessage());
@@ -533,6 +582,57 @@ class ICalImportCronjob extends AbstractCronjob
         try {
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
+            // Try using WoltLab API first
+            if (class_exists('calendar\data\event\CalendarEvent')) {
+                try {
+                    // Lade existierendes Event
+                    $calendarEvent = new CalendarEvent($eventID);
+                    if (!$calendarEvent->eventID) {
+                        $this->log('warning', "Event {$eventID} nicht gefunden, erstelle neu");
+                        $this->createEvent($event, $categoryID);
+                        return;
+                    }
+                    
+                    // Verwende WoltLab API für Update
+                    $action = new CalendarEventAction([$calendarEvent], 'update', [
+                        'data' => [
+                            'categoryID' => $categoryID,
+                            'subject' => $event['summary'],
+                            'message' => $event['description'] ?: $event['summary'],
+                            'time' => TIME_NOW,  // Macht Event UNGELESEN
+                            'location' => $event['location'] ?: '',
+                            'enableParticipation' => 1,
+                            'participationIsPublic' => 1,
+                            'maxCompanions' => 99,
+                            'participationIsChangeable' => 1,
+                            'maxParticipants' => 0,
+                            'participationEndTime' => $event['dtstart'],
+                            'inviteOnly' => 0
+                        ],
+                        'eventDateData' => [
+                            'startTime' => $event['dtstart'],
+                            'endTime' => $endTime,
+                            'isFullDay' => $event['allday'] ? 1 : 0,
+                            'timezone' => 'Europe/Berlin'
+                        ]
+                    ]);
+                    
+                    $action->executeAction();
+                    
+                    // Update UID mapping timestamp
+                    $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
+                    $statement = WCF::getDB()->prepareStatement($sql);
+                    $statement->execute([TIME_NOW, $event['uid']]);
+                    
+                    $this->log('debug', "Event aktualisiert via API: {$event['summary']} (ID: {$eventID})");
+                    return;
+                    
+                } catch (\Exception $apiException) {
+                    $this->log('warning', "WoltLab API fehlgeschlagen, nutze SQL-Fallback: " . $apiException->getMessage());
+                }
+            }
+            
+            // Fallback to direct SQL if API is not available or failed
             $eventDateData = serialize([
                 'startTime' => $event['dtstart'],
                 'endTime' => $endTime,
@@ -586,7 +686,7 @@ class ICalImportCronjob extends AbstractCronjob
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([TIME_NOW, $event['uid']]);
             
-            $this->log('debug', "Event aktualisiert: {$event['summary']} (ID: {$eventID}, UID: {$event['uid']})");
+            $this->log('debug', "Event aktualisiert (SQL Fallback): {$event['summary']} (ID: {$eventID}, UID: {$event['uid']})");
             
         } catch (\Exception $e) {
             $this->log('error', "Fehler beim Aktualisieren: {$event['summary']} - " . $e->getMessage());
