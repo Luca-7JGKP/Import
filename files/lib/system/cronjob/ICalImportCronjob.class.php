@@ -23,6 +23,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected $importID = null;
     protected $eventUserID = 1;
     protected $eventUsername = 'System';
+    protected $categoryID = null; // Cache for categoryID to avoid repeated queries
     
     /**
      * Execute the import - can be called with Cronjob object or null for manual execution.
@@ -51,9 +52,9 @@ class ICalImportCronjob extends AbstractCronjob
         $icsUrl = $importData['url'];
         $this->importID = $importData['importID'];
         
-        // Get categoryID from import or use fallback
-        $categoryID = $importData['categoryID'] ?: $this->getDefaultCategoryID();
-        if (!$categoryID) {
+        // Get categoryID from import or use fallback (cache it for reuse)
+        $this->categoryID = $importData['categoryID'] ?: $this->getDefaultCategoryID();
+        if (!$this->categoryID) {
             $this->log('error', 'Keine gültige Kategorie gefunden. Bitte categoryID in calendar1_event_import setzen.');
             return;
         }
@@ -63,7 +64,7 @@ class ICalImportCronjob extends AbstractCronjob
         $this->loadEventUserById($userID);
         
         $this->log('info', "Starte ICS-Import von: {$icsUrl}");
-        $this->log('info', "Kategorie: {$categoryID}");
+        $this->log('info', "Kategorie: {$this->categoryID}");
         $this->log('info', "Event-Ersteller: {$this->eventUsername} (ID: {$this->eventUserID})");
         
         try {
@@ -84,7 +85,7 @@ class ICalImportCronjob extends AbstractCronjob
                     $this->skippedCount++;
                     continue;
                 }
-                $this->importEvent($event, $categoryID);
+                $this->importEvent($event, $this->categoryID);
             }
             
             $this->log('info', "Import abgeschlossen: {$this->importedCount} neu, {$this->updatedCount} aktualisiert, {$this->skippedCount} übersprungen");
@@ -93,7 +94,7 @@ class ICalImportCronjob extends AbstractCronjob
             $this->updateImportLastRun();
             
             // Log result
-            $this->logImportResult($categoryID, count($events));
+            $this->logImportResult($this->categoryID, count($events));
             
         } catch (\Exception $e) {
             $this->log('error', 'Import-Fehler: ' . $e->getMessage());
@@ -465,11 +466,6 @@ class ICalImportCronjob extends AbstractCronjob
     protected function createEvent($event, $categoryID)
     {
         try {
-            // Ensure categoryID is NOT NULL (requirement!)
-            if (!$categoryID) {
-                $categoryID = $this->getDefaultCategoryID();
-            }
-            
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
             $eventDateData = serialize([
@@ -490,7 +486,7 @@ class ICalImportCronjob extends AbstractCronjob
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([
-                $categoryID,                      // NICHT NULL!
+                $categoryID,                      // NICHT NULL! (validated in execute())
                 $this->eventUserID,
                 $this->eventUsername,
                 $event['summary'],
@@ -535,11 +531,6 @@ class ICalImportCronjob extends AbstractCronjob
     protected function updateEvent($eventID, $event, $categoryID)
     {
         try {
-            // Ensure categoryID is NOT NULL (requirement!)
-            if (!$categoryID) {
-                $categoryID = $this->getDefaultCategoryID();
-            }
-            
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
             $eventDateData = serialize([
@@ -567,7 +558,7 @@ class ICalImportCronjob extends AbstractCronjob
                 $eventDateData,
                 TIME_NOW,  // V4.0: time = TIME_NOW macht Event UNGELESEN für alle!
                 $event['location'] ?: '',
-                $categoryID,  // Ensure categoryID is set
+                $categoryID,  // Ensure categoryID is set (validated in execute())
                 1,  // enableParticipation
                 1,  // participationIsPublic
                 99, // maxCompanions
