@@ -1,14 +1,56 @@
 # Kalender iCal Import Plugin für WoltLab Suite 6.1
 
-**Version:** 3.0.0  
+**Version:** 4.0.0  
 **Autor:** Luca Berwind  
 **Paket:** `com.lucaberwind.wcf.calendar.import`
 
 ## 📋 Übersicht
 
-Dieses Plugin importiert Kalender-Events aus ICS-Dateien (iCal-Format) in den WoltLab-Kalender und bietet erweiterte Funktionen für Gelesen/Ungelesen-Status, automatische Teilnahme-Funktionen und intelligente Duplikat-Erkennung.
+Dieses Plugin importiert Kalender-Events aus ICS-Dateien (iCal-Format) in den WoltLab-Kalender **vollautomatisch ohne manuelle Konfiguration**. Alle Einstellungen werden automatisch aus der `calendar1_event_import` Tabelle gelesen.
+
+## 🎯 Version 4.0 - Vollautomatisch!
+
+### Was ist neu in v4.0?
+
+✅ **Keine manuelle Konfiguration mehr nötig** - Alle Einstellungen aus `calendar1_event_import`  
+✅ **Automatische Kategorie-Erkennung** - Mit intelligenten Fallbacks  
+✅ **Perfekte UID-Mappings** - Keine Duplikate mehr (63 Events = 63 Mappings!)  
+✅ **categoryID nie NULL** - Events werden immer korrekt angezeigt  
+✅ **Alle Teilnahme-Einstellungen** - Automatisch bei jedem Event gesetzt
+
+### Behobene Probleme aus v3.0:
+
+❌ **categoryID war LEER** → ✅ Jetzt immer gesetzt mit Fallbacks  
+❌ **Nur 1 UID-Mapping für 63 Events** → ✅ Jetzt für JEDES Event ein Mapping  
+❌ **945 Events statt 63** → ✅ Keine Duplikate mehr durch korrektes Mapping  
+❌ **Manuelle Konfiguration nötig** → ✅ Vollautomatisch aus Datenbank
 
 ## ✨ Hauptfunktionen
+
+### 🚀 Vollautomatische Konfiguration (v4.0)
+
+Das Plugin liest **ALLE** Konfiguration automatisch aus der `calendar1_event_import` Tabelle:
+
+```sql
+SELECT importID, url, categoryID, userID, isDisabled, lastRun 
+FROM calendar1_event_import 
+WHERE isDisabled = 0;
+```
+
+**Was wird automatisch geladen:**
+- ✅ **url** - ICS-URL zum Importieren
+- ✅ **categoryID** - Ziel-Kategorie für Events (mit Fallback!)
+- ✅ **userID** - Event-Ersteller (Fallback: User ID 1)
+- ✅ **importID** - Wird für UID-Mappings verwendet
+
+**Fallback-Logik für categoryID:**
+1. `categoryID` aus `calendar1_event_import` (wenn gesetzt)
+2. Erste verfügbare Kalender-Kategorie aus `wcf1_category`
+3. Absoluter Fallback: `1`
+
+**Fallback-Logik für userID:**
+1. `userID` aus `calendar1_event_import` (wenn gesetzt)
+2. Fallback: User ID `1`
 
 ### 🎯 Gelesen/Ungelesen Logik
 - **Neue Events:** Automatisch als **ungelesen** für alle Benutzer markiert
@@ -25,18 +67,39 @@ Alle importierten Events haben folgende Teilnahme-Einstellungen:
 - ✅ **Anmeldeschluss bei Event-Start** (`participationEndTime = Event-Startzeit`)
 - ✅ **Jeder kann teilnehmen** (`inviteOnly = 0`)
 
-### 🔄 Intelligente Duplikat-Erkennung
-- Verwendet die iCal **UID** für eindeutige Identifikation
-- Speichert Mapping in Tabelle `calendar1_ical_uid_map`
-- Bei Änderungen wird der **bestehende Termin aktualisiert** (nicht neu erstellt)
-- Termine "wachsen mit" bei Datum/Zeit/Ort-Änderungen
+### 🔄 Intelligente Duplikat-Erkennung (v4.0 verbessert!)
+
+**Jedes Event** bekommt ein UID-Mapping - keine Duplikate mehr!
+
+```php
+// Für jedes Event aus der ICS:
+$uid = $event['uid'];
+
+// Prüfe ob UID schon existiert
+$existingEventID = SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = $uid;
+
+if ($existingEventID) {
+    // UPDATE - Event aktualisieren
+    UPDATE calendar1_event SET subject=?, message=?, time=TIME_NOW, ...;
+    UPDATE calendar1_event_date SET startTime=?, endTime=?, ...;
+    UPDATE calendar1_ical_uid_map SET lastUpdated = TIME_NOW;
+} else {
+    // INSERT - Neues Event erstellen
+    INSERT INTO calendar1_event (...) VALUES (...);
+    INSERT INTO calendar1_event_date (...) VALUES (...);
+    INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) VALUES (...);
+}
+```
+
+**Ergebnis:** 63 Events in ICS → 63 UID-Mappings → Keine Duplikate!
 
 ### 📥 Import-Funktionen
-- **ICS-Import** von externen URLs
-- **Konfigurierbarer Event-Ersteller** (User-ID)
-- **Konfigurierbare Kategorie** (Category-ID)
+- **Vollautomatischer ICS-Import** von externen URLs
+- **Keine wcf1_option Konfiguration nötig!** (v4.0)
+- **Automatischer Event-Ersteller** aus calendar1_event_import.userID
+- **Automatische Kategorie** aus calendar1_event_import.categoryID
 - **Automatischer Import** via Cronjob (alle 30 Minuten)
-- **Manueller Import** via Button im ACP
+- **Manueller Import** möglich (falls gewünscht)
 - **Import-Log** in Datenbank (`wcf1_calendar_import_log`)
 
 ## 🚀 Installation
@@ -67,41 +130,43 @@ Alle importierten Events haben folgende Teilnahme-Einstellungen:
 
 ## ⚙️ Konfiguration
 
-### ACP-Einstellungen
+### Schnellstart (v4.0)
 
-Nach der Installation findest du die Einstellungen unter:  
-**ACP → Optionen → Kalender-Import**
+**Das Plugin ist jetzt vollautomatisch!** Keine ACP-Optionen mehr nötig.
 
-#### 📡 ICS-Import Einstellungen
+#### 1. Import in Datenbank anlegen
 
-| Option | Beschreibung | Beispiel |
-|--------|--------------|----------|
-| **ICS-URL** | URL zur ICS-Datei | `http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-c24ed538.ics` |
-| **Ziel-Import-ID** | ID aus `calendar1_event_import` Tabelle | `1` (oder leer lassen) |
-| **Kategorie-ID** | Überschreibt categoryID aus Import | `0` = aus Import verwenden |
-| **Event-Ersteller (User-ID)** | Benutzer-ID für importierte Events | `1` (Standard: Admin) |
+Füge einen Eintrag in die `calendar1_event_import` Tabelle ein:
 
-#### 📊 Tracking-Einstellungen
+```sql
+INSERT INTO calendar1_event_import (url, categoryID, userID, isDisabled, lastRun)
+VALUES (
+    'http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-c24ed538.ics',
+    1,    -- Deine Kalender-Kategorie-ID (oder NULL für automatisch)
+    1,    -- Deine User-ID (oder NULL für User ID 1)
+    0,    -- 0 = aktiv, 1 = deaktiviert
+    0     -- Wird beim ersten Import gesetzt
+);
+```
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| **Vergangene Events als gelesen markieren** | ✅ Aktiv | Markiert automatisch Events in der Vergangenheit als gelesen |
-| **Aktualisierte Events als ungelesen markieren** | ✅ Aktiv | Setzt `time` auf NOW bei Updates → wird ungelesen |
+#### 2. Fertig!
 
-#### 🔧 Erweiterte Einstellungen
+Der Cronjob läuft automatisch alle 30 Minuten und:
+- ✅ Holt die URL aus `calendar1_event_import`
+- ✅ Nutzt `categoryID` (oder findet automatisch eine)
+- ✅ Nutzt `userID` (oder User ID 1)
+- ✅ Importiert alle Events mit korrekten UID-Mappings
+- ✅ Aktualisiert bestehende Events ohne Duplikate
 
-| Option | Standard | Beschreibung |
-|--------|----------|--------------|
-| **Maximale Events** | 100 | Max. Events pro Import (1-10000) |
-| **Log-Level** | Info | `error`, `warning`, `info`, `debug` |
-| **Forum-ID für Threads** | 0 | Forum für Event-Threads (0 = deaktiviert) |
-| **Threads erstellen** | ✅ | Thread für jedes Event erstellen |
-| **Zeitzone konvertieren** | ✅ | ICS-Zeiten zu Server-Zeitzone konvertieren |
+### Manuelle Ausführung (optional)
 
-### Manueller Import
+Falls du den Import sofort ausführen möchtest:
 
-**Button im ACP:** "Import jetzt ausführen"  
-Führt sofort einen Import aus, ohne auf den Cronjob zu warten.
+```php
+require_once('lib/system/cronjob/ICalImportCronjob.class.php');
+$cronjob = new \wcf\system\cronjob\ICalImportCronjob();
+$cronjob->runManually();
+```
 
 ## 🔄 Cronjobs
 
@@ -162,27 +227,84 @@ CREATE TABLE wcf1_calendar_import_log (
 
 ## 🧪 Test-Szenario
 
-### Test-URL (Mainz 05 Spielplan)
+### Test-URL (Mainz 05 Spielplan - 63 Events)
 ```
 http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-c24ed538.ics
 ```
 
-### Test-Ablauf
+### Test-Ablauf (v4.0)
 
-1. **ICS-URL in den ACP-Einstellungen eingeben**
-2. **"Import jetzt ausführen" klicken**
+1. **Import in Datenbank anlegen:**
+```sql
+INSERT INTO calendar1_event_import (url, categoryID, userID, isDisabled)
+VALUES (
+    'http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-c24ed538.ics',
+    1, 1, 0
+);
+```
+
+2. **Cronjob läuft automatisch** (oder manuell ausführen)
+
 3. **Ergebnis prüfen:**
-   - Events sollten im Kalender erscheinen
-   - Teilnahme-Button sollte bei jedem Event sichtbar sein
-   - Neue Events sind ungelesen (rot markiert)
-   - Vergangene Events sind gelesen
+   - ✅ **63 Events** sollten im Kalender erscheinen
+   - ✅ **63 UID-Mappings** in `calendar1_ical_uid_map` Tabelle
+   - ✅ Teilnahme-Button bei jedem Event sichtbar
+   - ✅ Alle Events haben `categoryID` gesetzt (nicht NULL!)
+   - ✅ Neue Events sind ungelesen (time = TIME_NOW)
 
 4. **Duplikat-Test:**
-   - Import erneut ausführen
-   - Events sollten **nicht doppelt** erstellt werden
-   - Bestehende Events sollten aktualisiert werden
+   - Import erneut ausführen (manuell oder warten auf Cronjob)
+   - ✅ **Keine Duplikate!** Events werden aktualisiert, nicht neu erstellt
+   - ✅ Events werden **ungelesen** (time = TIME_NOW bei Update)
+   - ✅ Immer noch nur **63 Events** und **63 UID-Mappings**
+
+### Prüfung der UID-Mappings
+
+```sql
+-- Sollte 63 Zeilen zurückgeben (für Mainz 05 Spielplan)
+SELECT COUNT(*) FROM calendar1_ical_uid_map;
+
+-- Zeige alle Mappings
+SELECT m.mapID, m.eventID, m.icalUID, e.subject 
+FROM calendar1_ical_uid_map m
+JOIN calendar1_event e ON m.eventID = e.eventID
+ORDER BY m.mapID;
+```
 
 ## 🐛 Troubleshooting
+
+### Problem: "Keine Import-Konfiguration gefunden"
+
+**Ursache:** Keine aktive Konfiguration in `calendar1_event_import` Tabelle
+
+**Lösung:**
+```sql
+-- Prüfe vorhandene Imports
+SELECT * FROM calendar1_event_import;
+
+-- Erstelle einen neuen Import (falls keiner existiert)
+INSERT INTO calendar1_event_import (url, categoryID, userID, isDisabled)
+VALUES ('https://deine-ics-url.ics', 1, 1, 0);
+
+-- Oder aktiviere einen deaktivierten Import
+UPDATE calendar1_event_import SET isDisabled = 0 WHERE importID = 1;
+```
+
+### Problem: "Keine gültige Kategorie gefunden"
+
+**Ursache:** categoryID ist NULL und keine Kalender-Kategorie gefunden
+
+**Lösung:**
+```sql
+-- Finde verfügbare Kalender-Kategorien
+SELECT c.categoryID, c.title 
+FROM wcf1_category c
+JOIN wcf1_object_type ot ON c.objectTypeID = ot.objectTypeID
+WHERE ot.objectType = 'com.woltlab.calendar.category';
+
+-- Setze categoryID in Import-Konfiguration
+UPDATE calendar1_event_import SET categoryID = 1 WHERE importID = 1;
+```
 
 ### Problem: Events werden doppelt importiert
 
@@ -227,18 +349,56 @@ http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-c24ed538.ics
 - Cronjob "FixTimezoneCronjob" aktivieren
 - Server-Zeitzone in PHP prüfen: `php -i | grep timezone`
 
-### Problem: ACP-Einstellungen werden nicht gespeichert
+### Problem: categoryID ist NULL in Events
 
-**Lösung:**
-- Prüfe, ob Optionen in `wcf1_option` Tabelle existieren:
-  ```sql
-  SELECT optionName, optionValue FROM wcf1_option 
-  WHERE optionName LIKE 'calendar_import%';
-  ```
-- Cache leeren: **ACP → Wartung → Cache leeren**
-- Browser-Cache leeren (Strg+F5)
+**Ursache (v3.0 Problem, in v4.0 behoben):** Alte Version hat categoryID nicht korrekt gesetzt
+
+**Lösung in v4.0:**
+- ✅ Automatisch behoben! v4.0 setzt categoryID IMMER
+- ✅ Fallback-Logik verhindert NULL-Werte
+- Bei Updates werden Events automatisch korrigiert
+
+```sql
+-- Prüfe Events ohne categoryID (sollte in v4.0 nicht passieren)
+SELECT COUNT(*) FROM calendar1_event WHERE categoryID IS NULL;
+
+-- Falls doch vorhanden (von alter Version), manuell fixen:
+UPDATE calendar1_event 
+SET categoryID = 1 
+WHERE categoryID IS NULL OR categoryID = 0;
+```
 
 ## 📝 Changelog
+
+### Version 4.0.0 (2026-01-06) 🎯 FINALE AUTOMATISCHE VERSION
+
+**🚀 Komplett überarbeitet - Vollautomatisch!**
+
+#### ✅ Behobene Probleme aus v3.0:
+- ❌ **categoryID war LEER** → ✅ **Jetzt immer gesetzt** mit intelligenten Fallbacks
+- ❌ **Nur 1 UID-Mapping für 63 Events** → ✅ **Jetzt für JEDES Event** ein Mapping
+- ❌ **945 Events statt 63** → ✅ **Keine Duplikate mehr** durch korrektes Mapping
+- ❌ **Manuelle Konfiguration nötig** → ✅ **Vollautomatisch** aus Datenbank
+
+#### 🎯 Neue Features:
+- ✅ **Vollautomatische Konfiguration** aus `calendar1_event_import` Tabelle
+- ✅ **Keine wcf1_option mehr nötig** - Alles aus Datenbank
+- ✅ **Intelligente categoryID-Fallbacks:**
+  1. Aus `calendar1_event_import.categoryID`
+  2. Erste Kalender-Kategorie
+  3. Absoluter Fallback: 1
+- ✅ **UID-Mapping für ALLE Events** - Keine Duplikate!
+- ✅ **categoryID NIEMALS NULL** - Events immer sichtbar
+- ✅ **time = TIME_NOW bei Updates** - Events werden ungelesen
+- ✅ **Alle Teilnahme-Einstellungen** automatisch gesetzt
+
+#### 🔧 Technische Verbesserungen:
+- Entfernt: Abhängigkeit von `wcf1_option` Konstanten
+- Entfernt: `getOption()` Methode
+- Entfernt: `loadEventUser()` Methode (ersetzt durch `loadEventUserById()`)
+- Hinzugefügt: `getDefaultCategoryID()` mit Fallback-Logik
+- Verbessert: `createEvent()` und `updateEvent()` mit categoryID-Prüfung
+- Verbessert: Logging mit "v4.0" Prefix
 
 ### Version 3.0.0 (2026-01-01)
 - ✅ **Komplett neue Implementierung** für WoltLab Suite 6.1

@@ -3,10 +3,10 @@
     <packageinformation>
         <packagename>Kalender iCal Import</packagename>
         <packagename language="en">Calendar iCal Import</packagename>
-        <packagedescription>Importiert Kalender-Events aus iCal-Dateien mit erweiterter Gelesen/Ungelesen-Logik und automatischem ICS-URL-Import.</packagedescription>
-        <packagedescription language="en">Imports calendar events from iCal files with extended read/unread logic and automatic ICS URL import.</packagedescription>
-        <version>3.0.0</version>
-        <date>2026-01-01</date>
+        <packagedescription>Importiert Kalender-Events aus iCal-Dateien vollautomatisch ohne manuelle Konfiguration. Alle Einstellungen werden aus calendar1_event_import gelesen.</packagedescription>
+        <packagedescription language="en">Imports calendar events from iCal files fully automatically without manual configuration. All settings are read from calendar1_event_import.</packagedescription>
+        <version>4.0.0</version>
+        <date>2026-01-06</date>
     </packageinformation>
     
     <authorinformation>
@@ -40,10 +40,17 @@
         <instruction type="cronjob">cronjob.xml</instruction>
     </instructions>
     
-    <instructions type="update" fromversion="2.*">
+    <instructions type="update" fromversion="3.*">
         <instruction type="sql">install.sql</instruction>
         <instruction type="file">files.tar</instruction>
         <instruction type="acpTemplate">acptemplates.tar</instruction>
+        <instruction type="language">language/*.xml</instruction>
+        <instruction type="eventListener">eventListener.xml</instruction>
+        <instruction type="option">options.xml</instruction>
+        <instruction type="acpMenu">acpMenu.xml</instruction>
+        <instruction type="cronjob">cronjob.xml</instruction>
+    </instructions>
+</package></instruction>
         <instruction type="language">language/*.xml</instruction>
         <instruction type="eventListener">eventListener.xml</instruction>
         <instruction type="option">options.xml</instruction>
