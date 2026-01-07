@@ -18,8 +18,29 @@ class PackageInstallationEventListener implements IParameterizedEventListener
      */
     public function execute($eventObj, $className, $eventName, array &$parameters)
     {
+        // Disable WoltLab's standard import cronjob
+        $this->disableWoltLabImportCronjob();
+        
         // Schedule cronjobs immediately after package installation/update
         $this->scheduleCronjobs();
+    }
+    
+    /**
+     * Disable WoltLab's standard import cronjob.
+     * Our extended cronjob takes over the import functionality.
+     */
+    protected function disableWoltLabImportCronjob()
+    {
+        try {
+            // Find and disable WoltLab's Calendar Import Cronjob
+            $sql = "UPDATE wcf" . WCF_N . "_cronjob 
+                    SET isDisabled = 1 
+                    WHERE className = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute(['calendar\\system\\cronjob\\ICalImportCronjob']);
+        } catch (\Exception $e) {
+            // Silently fail if cronjob doesn't exist
+        }
     }
     
     /**

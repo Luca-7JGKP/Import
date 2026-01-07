@@ -51,7 +51,6 @@ echo "📦 Sammle Plugin-Dateien..."
 # Kopiere Hauptdateien ins Build-Verzeichnis
 cp package.xml "$BUILD_DIR/" || { echo "❌ FEHLER: package.xml nicht gefunden!"; exit 1; }
 [ -f "eventListener.xml" ] && cp eventListener.xml "$BUILD_DIR/"
-[ -f "options.xml" ] && cp options.xml "$BUILD_DIR/"
 [ -f "acpMenu.xml" ] && cp acpMenu.xml "$BUILD_DIR/"
 [ -f "cronjob.xml" ] && cp cronjob.xml "$BUILD_DIR/"
 [ -f "install.sql" ] && cp install.sql "$BUILD_DIR/"

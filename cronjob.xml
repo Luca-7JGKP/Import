@@ -3,8 +3,8 @@
     <import>
         <cronjob name="com.lucaberwind.wcf.calendar.import.icalImport">
             <classname>wcf\system\cronjob\ICalImportCronjob</classname>
-            <description>Importiert Events aus ICS-URL</description>
-            <description language="en">Imports events from ICS URL</description>
+            <description>ICS Import (erweitert) - Mit UID-Mapping und Event-Threads</description>
+            <description language="en">ICS Import (extended) - With UID mapping and event threads</description>
             <startminute>0,30</startminute>
             <starthour>*</starthour>
             <startdom>*</startdom>

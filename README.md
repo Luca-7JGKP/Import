@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.0
+# 📅 Kalender iCal Import Plugin v4.1
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.0.0 |
+| **Version** | 4.1.0 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -65,14 +65,16 @@ bash build.sh
 
 **Speichern** - Fertig! ✅
 
+> **Hinweis:** WoltLab's Standard-Import-Cronjob wird automatisch deaktiviert. 
+> Unser erweiterter Cronjob "ICS Import (erweitert)" übernimmt den Import.
+
 ### Schritt 2: Event-Threads aktivieren (optional)
 
-Wenn automatisch Forum-Threads erstellt werden sollen:
+**ACP → Kalender → Einstellungen → Event-Thread**
 
-1. **ACP → Kalender → Einstellungen → Event-Thread**
-2. **Board** auswählen (z.B. "Termine")
-3. **Kategorien** aktivieren
-4. **Speichern**
+1. **Board** auswählen
+2. **Kategorien** aktivieren
+3. **Speichern**
 
 ---
 
