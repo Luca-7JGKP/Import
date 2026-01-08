@@ -14,19 +14,6 @@
             <canbedisabled>1</canbedisabled>
         </cronjob>
         
-        <cronjob name="com.lucaberwind.wcf.calendar.import.fixTimezone">
-            <classname>wcf\system\cronjob\FixTimezoneCronjob</classname>
-            <description>Korrigiert Timezone-Offset nach ICS-Import</description>
-            <description language="en">Fixes timezone offset after ICS import</description>
-            <startminute>5,35</startminute>
-            <starthour>*</starthour>
-            <startdom>*</startdom>
-            <startmonth>*</startmonth>
-            <startdow>*</startdow>
-            <canbeedited>1</canbeedited>
-            <canbedisabled>1</canbedisabled>
-        </cronjob>
-        
         <cronjob name="com.lucaberwind.wcf.calendar.import.markPastRead">
             <classname>wcf\system\cronjob\MarkPastEventsReadCronjob</classname>
             <description>Markiert abgelaufene Events als gelesen</description>
