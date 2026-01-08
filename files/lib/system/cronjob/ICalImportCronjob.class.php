@@ -12,9 +12,14 @@ use wcf\system\WCF;
  * Importiert Events aus einer ICS-URL in den WoltLab-Kalender.
  * Vollautomatische Version ohne manuelle Konfiguration.
  * 
+ * Features:
+ * - Event-Title-Fallback (Summary → Location → Description → UID)
+ * - Event-Thread-Erstellung via WoltLab API
+ * - Keine Timezone-Workarounds nötig (korrekte Implementierung)
+ * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.1.0
+ * @version 4.1.1
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -349,6 +354,9 @@ class ICalImportCronjob extends AbstractCronjob
         try {
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
+            // Ensure event always has a title (fallback to location, description, or UID)
+            $eventTitle = $this->getEventTitle($event);
+            
             // Try WoltLab API first (for Event-Thread support)
             if (class_exists('calendar\data\event\CalendarEventAction')) {
                 try {
@@ -357,8 +365,8 @@ class ICalImportCronjob extends AbstractCronjob
                             'categoryID' => $categoryID,
                             'userID' => $this->eventUserID,
                             'username' => $this->eventUsername,
-                            'subject' => $event['summary'],
-                            'message' => $event['description'] ?: $event['summary'],
+                            'subject' => $eventTitle,
+                            'message' => $event['description'] ?: $eventTitle,
                             'time' => TIME_NOW,
                             'enableHtml' => 0,
                             'location' => $event['location'] ?: '',
@@ -381,7 +389,7 @@ class ICalImportCronjob extends AbstractCronjob
                     $result = $action->executeAction();
                     $eventID = $result['returnValues']->eventID;
                     $this->saveUidMapping($eventID, $event['uid']);
-                    $this->log('debug', "Event erstellt via API: {$event['summary']}");
+                    $this->log('debug', "Event erstellt via API: {$eventTitle}");
                     return;
                 } catch (\Exception $apiEx) {
                     $this->log('warning', "API Fallback: " . $apiEx->getMessage());
@@ -391,7 +399,7 @@ class ICalImportCronjob extends AbstractCronjob
             // SQL Fallback
             $eventDateData = serialize(['startTime' => $event['dtstart'], 'endTime' => $endTime, 'isFullDay' => $event['allday'] ? 1 : 0, 'timezone' => 'Europe/Berlin', 'repeatType' => '']);
             $sql = "INSERT INTO calendar1_event (categoryID, userID, username, subject, message, time, enableHtml, eventDate, location, enableParticipation, participationIsPublic, maxCompanions, participationIsChangeable, maxParticipants, participationEndTime, inviteOnly) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            WCF::getDB()->prepareStatement($sql)->execute([$categoryID, $this->eventUserID, $this->eventUsername, $event['summary'], $event['description'] ?: $event['summary'], TIME_NOW, 0, $eventDateData, $event['location'] ?: '', 1, 1, 99, 1, 0, $event['dtstart'], 0]);
+            WCF::getDB()->prepareStatement($sql)->execute([$categoryID, $this->eventUserID, $this->eventUsername, $eventTitle, $event['description'] ?: $eventTitle, TIME_NOW, 0, $eventDateData, $event['location'] ?: '', 1, 1, 99, 1, 0, $event['dtstart'], 0]);
             $eventID = WCF::getDB()->getInsertID('calendar1_event', 'eventID');
             
             $sql = "INSERT INTO calendar1_event_date (eventID, startTime, endTime, isFullDay) VALUES (?, ?, ?, ?)";
@@ -399,7 +407,7 @@ class ICalImportCronjob extends AbstractCronjob
             
             $this->saveUidMapping($eventID, $event['uid']);
         } catch (\Exception $e) {
-            $this->log('error', "Fehler: {$event['summary']} - " . $e->getMessage());
+            $this->log('error', "Fehler: {$eventTitle} - " . $e->getMessage());
             $this->skippedCount++;
         }
     }
@@ -409,6 +417,9 @@ class ICalImportCronjob extends AbstractCronjob
         try {
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
+            // Ensure event always has a title (fallback to location, description, or UID)
+            $eventTitle = $this->getEventTitle($event);
+            
             // Try WoltLab API first
             if (class_exists('calendar\data\event\CalendarEvent')) {
                 try {
@@ -417,8 +428,8 @@ class ICalImportCronjob extends AbstractCronjob
                         $action = new CalendarEventAction([$calendarEvent], 'update', [
                             'data' => [
                                 'categoryID' => $categoryID,
-                                'subject' => $event['summary'],
-                                'message' => $event['description'] ?: $event['summary'],
+                                'subject' => $eventTitle,
+                                'message' => $event['description'] ?: $eventTitle,
                                 'time' => TIME_NOW,
                                 'location' => $event['location'] ?: '',
                                 'enableParticipation' => 1,
@@ -447,7 +458,7 @@ class ICalImportCronjob extends AbstractCronjob
             // SQL Fallback
             $eventDateData = serialize(['startTime' => $event['dtstart'], 'endTime' => $endTime, 'isFullDay' => $event['allday'] ? 1 : 0, 'timezone' => 'Europe/Berlin', 'repeatType' => '']);
             $sql = "UPDATE calendar1_event SET subject = ?, message = ?, eventDate = ?, time = ?, location = ?, categoryID = ?, enableParticipation = ?, participationIsPublic = ?, maxCompanions = ?, participationIsChangeable = ?, maxParticipants = ?, participationEndTime = ?, inviteOnly = ? WHERE eventID = ?";
-            WCF::getDB()->prepareStatement($sql)->execute([$event['summary'], $event['description'] ?: $event['summary'], $eventDateData, TIME_NOW, $event['location'] ?: '', $categoryID, 1, 1, 99, 1, 0, $event['dtstart'], 0, $eventID]);
+            WCF::getDB()->prepareStatement($sql)->execute([$eventTitle, $event['description'] ?: $eventTitle, $eventDateData, TIME_NOW, $event['location'] ?: '', $categoryID, 1, 1, 99, 1, 0, $event['dtstart'], 0, $eventID]);
             
             $sql = "UPDATE calendar1_event_date SET startTime = ?, endTime = ?, isFullDay = ? WHERE eventID = ?";
             WCF::getDB()->prepareStatement($sql)->execute([$event['dtstart'], $endTime, $event['allday'] ? 1 : 0, $eventID]);
@@ -457,6 +468,45 @@ class ICalImportCronjob extends AbstractCronjob
         } catch (\Exception $e) {
             $this->log('error', "Update-Fehler: " . $e->getMessage());
         }
+    }
+    
+    /**
+     * Get event title with fallback logic.
+     * Ensures every event has a non-empty title.
+     * Fallback order: summary → location → description → UID-based title
+     */
+    protected function getEventTitle($event)
+    {
+        // Try summary first
+        if (!empty($event['summary'])) {
+            $summary = trim($event['summary']);
+            if ($summary !== '') {
+                return $summary;
+            }
+        }
+        
+        // Fallback to location
+        if (!empty($event['location'])) {
+            $location = trim($event['location']);
+            if ($location !== '') {
+                return 'Event: ' . $location;
+            }
+        }
+        
+        // Fallback to description (first 50 chars)
+        if (!empty($event['description'])) {
+            $desc = trim($event['description']);
+            if ($desc !== '') {
+                return strlen($desc) > 50 ? substr($desc, 0, 50) . '...' : $desc;
+            }
+        }
+        
+        // Last resort: Use UID or generic title
+        if (!empty($event['uid'])) {
+            return 'Event ' . substr($event['uid'], 0, 20);
+        }
+        
+        return 'Unnamed Event';
     }
     
     protected function log($level, $message)

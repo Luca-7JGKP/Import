@@ -241,7 +241,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
     }
     
     protected function handleBeforeImport($eventObj, array &$parameters) {
-        // Timezone-Konvertierung wird jetzt vom FixTimezoneCronjob übernommen
+        // Timezone handling is now done correctly in ICalImportCronjob
     }
     
     protected function handleAfterImport($eventObj, array &$parameters) {
