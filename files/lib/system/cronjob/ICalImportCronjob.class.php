@@ -478,19 +478,27 @@ class ICalImportCronjob extends AbstractCronjob
     protected function getEventTitle($event)
     {
         // Try summary first
-        if (!empty($event['summary']) && trim($event['summary']) !== '') {
-            return trim($event['summary']);
+        if (!empty($event['summary'])) {
+            $summary = trim($event['summary']);
+            if ($summary !== '') {
+                return $summary;
+            }
         }
         
         // Fallback to location
-        if (!empty($event['location']) && trim($event['location']) !== '') {
-            return 'Event: ' . trim($event['location']);
+        if (!empty($event['location'])) {
+            $location = trim($event['location']);
+            if ($location !== '') {
+                return 'Event: ' . $location;
+            }
         }
         
         // Fallback to description (first 50 chars)
-        if (!empty($event['description']) && trim($event['description']) !== '') {
+        if (!empty($event['description'])) {
             $desc = trim($event['description']);
-            return strlen($desc) > 50 ? substr($desc, 0, 50) . '...' : $desc;
+            if ($desc !== '') {
+                return strlen($desc) > 50 ? substr($desc, 0, 50) . '...' : $desc;
+            }
         }
         
         // Last resort: Use UID or generic title

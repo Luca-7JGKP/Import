@@ -26,7 +26,7 @@
         <instruction type="cronjob">cronjob.xml</instruction>
     </instructions>
     
-    <instructions type="update" fromversion="*">
+    <instructions type="update" fromversion="1.0.0">
         <instruction type="sql">install.sql</instruction>
         <instruction type="file">files.tar</instruction>
         <instruction type="language">language/*.xml</instruction>
