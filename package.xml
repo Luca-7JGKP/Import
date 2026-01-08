@@ -33,8 +33,4 @@
         <instruction type="eventListener">eventListener.xml</instruction>
         <instruction type="cronjob">cronjob.xml</instruction>
     </instructions>
-</package></instruction>
-        <instruction type="eventListener">eventListener.xml</instruction>
-        <instruction type="cronjob">cronjob.xml</instruction>
-    </instructions>
 </package>
