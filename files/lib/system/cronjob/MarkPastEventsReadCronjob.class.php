@@ -142,7 +142,9 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
             $this->log('debug', "Batch insert completed: {$affectedRows} rows inserted");
             return $affectedRows;
         } catch (\Exception $e) {
-            $this->log('error', 'Batch insert failed: ' . $e->getMessage());
+            $this->log('error', 'Batch insert failed', [
+                'error' => $e->getMessage()
+            ]);
             return 0;
         }
     }
@@ -182,7 +184,9 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
                     'objectTypeID' => $objectTypeID
                 ]);
             } catch (\Exception $e) {
-                $this->log('error', 'Failed to get object type: ' . $e->getMessage());
+                $this->log('error', 'Failed to get object type', [
+                    'error' => $e->getMessage()
+                ]);
                 $objectTypeID = 0;
             }
         }

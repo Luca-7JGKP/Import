@@ -190,7 +190,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([$objectTypeID, $eventID, TIME_NOW]);
             
-            $this->log('debug', 'Marked event as read for all users', [
+            $this->log('Marked event as read for all users', [
                 'eventID' => $eventID,
                 'affectedRows' => $statement->getAffectedRows()
             ]);
@@ -218,7 +218,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute([$objectTypeID, $eventID]);
                 
-                $this->log('debug', 'Marked event as unread for all users', [
+                $this->log('Marked event as unread for all users', [
                     'eventID' => $eventID,
                     'deletedRows' => $statement->getAffectedRows()
                 ]);
