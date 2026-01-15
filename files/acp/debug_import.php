@@ -147,10 +147,14 @@ foreach ($tablesToCheck as $table => $desc) {
         
         $count = 'N/A';
         if ($exists) {
-            $sql2 = "SELECT COUNT(*) FROM {$table}";
-            $stmt2 = WCF::getDB()->prepareStatement($sql2);
-            $stmt2->execute();
-            $count = $stmt2->fetchColumn();
+            // Table name is from whitelist above, safe to use
+            // Validate it matches expected pattern for extra safety
+            if (preg_match('/^[a-z0-9_]+$/i', $table)) {
+                $sql2 = "SELECT COUNT(*) FROM `{$table}`";
+                $stmt2 = WCF::getDB()->prepareStatement($sql2);
+                $stmt2->execute();
+                $count = $stmt2->fetchColumn();
+            }
         }
         
         $status = $exists ? '<span class="badge badge-ok">✓</span>' : '<span class="badge badge-fail">✗</span>';

@@ -106,10 +106,11 @@ foreach ($tablesToCheck as $table) {
         if ($exists) {
             echo '<div class="success">✅ Tabelle existiert</div>';
             
-            // Zeige Struktur
-            $sql = "DESCRIBE " . $table;
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
+            // Zeige Struktur - Table name from whitelist, validate for safety
+            if (preg_match('/^[a-z0-9_]+$/i', $table)) {
+                $sql = "DESCRIBE `{$table}`";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
             
             echo '<table><tr><th>Feld</th><th>Typ</th><th>Null</th><th>Key</th><th>Default</th></tr>';
             while ($row = $statement->fetchArray()) {
@@ -123,13 +124,14 @@ foreach ($tablesToCheck as $table) {
             }
             echo '</table>';
             
-            // Zeige Anzahl Einträge
-            $sql = "SELECT COUNT(*) as cnt FROM " . $table;
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            $count = $statement->fetchColumn();
-            echo '<div class="info">📊 Anzahl Einträge: ' . $count . '</div>';
-            
+            // Zeige Anzahl Einträge - Table name from whitelist, validate for safety
+            if (preg_match('/^[a-z0-9_]+$/i', $table)) {
+                $sql = "SELECT COUNT(*) as cnt FROM `{$table}`";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                $count = $statement->fetchColumn();
+                echo '<div class="info">📊 Anzahl Einträge: ' . $count . '</div>';
+            }
         } else {
             echo '<div class="error">❌ Tabelle existiert NICHT</div>';
         }

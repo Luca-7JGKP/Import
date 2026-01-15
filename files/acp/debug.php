@@ -47,11 +47,15 @@ foreach ($tables as $table => $description) {
     
     if ($exists) {
         try {
-            $sql = "SELECT COUNT(*) FROM {$table}";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute();
-            $count = $statement->fetchColumn();
-            echo "  → Einträge: {$count}\n";
+            // Table name is from whitelist above, safe to use
+            // Validate it matches expected pattern for extra safety
+            if (preg_match('/^[a-z0-9_]+$/i', $table)) {
+                $sql = "SELECT COUNT(*) FROM `{$table}`";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                $count = $statement->fetchColumn();
+                echo "  → Einträge: {$count}\n";
+            }
         } catch (\Exception $e) {
             echo "  → Fehler beim Zählen: " . $e->getMessage() . "\n";
         }
