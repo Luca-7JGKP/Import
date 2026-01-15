@@ -106,8 +106,8 @@ foreach ($tablesToCheck as $table) {
         if ($exists) {
             echo '<div class="success">✅ Tabelle existiert</div>';
             
-            // Zeige Struktur
-            $sql = "DESCRIBE " . $table;
+            // Zeige Struktur - Use identifier quoting to prevent SQL injection
+            $sql = "DESCRIBE " . WCF::getDB()->escapeString($table);
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             
@@ -123,8 +123,8 @@ foreach ($tablesToCheck as $table) {
             }
             echo '</table>';
             
-            // Zeige Anzahl Einträge
-            $sql = "SELECT COUNT(*) as cnt FROM " . $table;
+            // Zeige Anzahl Einträge - Use identifier quoting to prevent SQL injection
+            $sql = "SELECT COUNT(*) as cnt FROM " . WCF::getDB()->escapeString($table);
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             $count = $statement->fetchColumn();

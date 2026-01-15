@@ -47,7 +47,8 @@ foreach ($tables as $table => $description) {
     
     if ($exists) {
         try {
-            $sql = "SELECT COUNT(*) FROM {$table}";
+            // Use identifier quoting to prevent SQL injection
+            $sql = "SELECT COUNT(*) FROM " . WCF::getDB()->escapeString($table);
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             $count = $statement->fetchColumn();

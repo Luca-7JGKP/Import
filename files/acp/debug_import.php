@@ -147,7 +147,8 @@ foreach ($tablesToCheck as $table => $desc) {
         
         $count = 'N/A';
         if ($exists) {
-            $sql2 = "SELECT COUNT(*) FROM {$table}";
+            // Use identifier quoting to prevent SQL injection
+            $sql2 = "SELECT COUNT(*) FROM " . WCF::getDB()->escapeString($table);
             $stmt2 = WCF::getDB()->prepareStatement($sql2);
             $stmt2->execute();
             $count = $stmt2->fetchColumn();

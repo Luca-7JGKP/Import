@@ -68,7 +68,8 @@ class CalendarImportDebugPage extends AbstractPage {
         // 3. Get table structures for calendar tables
         foreach ($this->debugData['calendarTables'] as $table) {
             try {
-                $sql = "DESCRIBE " . $table;
+                // Use identifier quoting to prevent SQL injection
+                $sql = "DESCRIBE " . WCF::getDB()->escapeString($table);
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute();
                 $this->debugData['tableStructures'][$table] = [];
@@ -79,9 +80,9 @@ class CalendarImportDebugPage extends AbstractPage {
                 $this->debugData['errors'][] = "DESCRIBE {$table}: " . $e->getMessage();
             }
             
-            // Get first 10 rows
+            // Get first 10 rows - Use identifier quoting to prevent SQL injection
             try {
-                $sql = "SELECT * FROM " . $table . " LIMIT 10";
+                $sql = "SELECT * FROM " . WCF::getDB()->escapeString($table) . " LIMIT 10";
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute();
                 $this->debugData['tableContents'][$table] = [];
