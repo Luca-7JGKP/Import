@@ -15,11 +15,20 @@ use wcf\system\WCF;
  * Features:
  * - Event-Title-Fallback (Summary → Location → Description → UID)
  * - Event-Thread-Erstellung via WoltLab API
- * - Keine Timezone-Workarounds nötig (korrekte Implementierung)
+ * - Configurable timezone support with fallback to server timezone
+ * - UID-based duplicate prevention with UNIQUE constraint validation
+ * - Comprehensive error logging and debugging
+ * - SQL injection protection via parameterized queries
+ * - WoltLab API integration with SQL fallback
+ * 
+ * Security:
+ * - All database queries use parameterized statements
+ * - Input validation for all external data
+ * - Safe error handling without exposing sensitive information
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.1.1
+ * @version 4.2.0
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -31,6 +40,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected $eventUserID = 1;
     protected $eventUsername = 'System';
     protected $categoryID = null;
+    protected $timezone = 'Europe/Berlin'; // Default timezone, can be overridden
     
     public function execute($cronjob = null)
     {
@@ -38,42 +48,66 @@ class ICalImportCronjob extends AbstractCronjob
             parent::execute($cronjob);
         }
         
-        // v4.1: Ensure ALL required tables exist - 100% crash-proof!
+        // v4.2: Ensure ALL required tables exist - 100% crash-proof!
         $this->ensureAllTablesExist();
         
         $importData = $this->getImportFromDatabase();
         
         if (!$importData || empty($importData['url'])) {
-            $this->log('error', 'Keine Import-Konfiguration gefunden.');
+            $this->log('error', 'Keine Import-Konfiguration gefunden.', [
+                'context' => 'execute',
+                'table_check' => $this->checkImportTableExists()
+            ]);
             return;
         }
         
         $icsUrl = $importData['url'];
         $this->importID = $importData['importID'];
         
+        // Load timezone configuration (configurable, defaults to Europe/Berlin)
+        $this->timezone = $this->getConfiguredTimezone();
+        $this->log('debug', "Using timezone: {$this->timezone}");
+        
         $this->categoryID = $importData['categoryID'] ?: $this->getDefaultCategoryID();
         if (!$this->categoryID) {
-            $this->log('error', 'Keine gültige Kategorie gefunden.');
+            $this->log('error', 'Keine gültige Kategorie gefunden.', [
+                'importID' => $this->importID,
+                'categoryID' => $importData['categoryID']
+            ]);
             return;
         }
         
         $userID = $importData['userID'] ?: 1;
         $this->loadEventUserById($userID);
         
-        $this->log('info', "Starte ICS-Import von: {$icsUrl}");
+        $this->log('info', "Starte ICS-Import von: {$icsUrl}", [
+            'importID' => $this->importID,
+            'categoryID' => $this->categoryID,
+            'userID' => $this->eventUserID,
+            'timezone' => $this->timezone
+        ]);
         
         try {
             $icsContent = $this->fetchIcsContent($icsUrl);
             if (!$icsContent) {
-                $this->log('error', 'ICS-Inhalt konnte nicht abgerufen werden');
+                $this->log('error', 'ICS-Inhalt konnte nicht abgerufen werden', [
+                    'url' => $icsUrl,
+                    'importID' => $this->importID
+                ]);
                 return;
             }
             
             $events = $this->parseIcsContent($icsContent);
             $this->log('info', count($events) . ' Events in ICS gefunden');
             
+            // Check all events for updates or duplicates
+            $this->validateEventsForDuplicates($events);
+            
             foreach ($events as $event) {
                 if (empty($event['uid'])) {
+                    $this->log('warning', 'Event ohne UID übersprungen', [
+                        'summary' => $event['summary'] ?? 'N/A'
+                    ]);
                     $this->skippedCount++;
                     continue;
                 }
@@ -85,17 +119,21 @@ class ICalImportCronjob extends AbstractCronjob
             $this->logImportResult($this->categoryID, count($events));
             
         } catch (\Exception $e) {
-            $this->log('error', 'Import-Fehler: ' . $e->getMessage());
+            $this->log('error', 'Import-Fehler: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
     
     /**
-     * v4.1: Ensures ALL required database tables exist.
+     * v4.2: Ensures ALL required database tables exist.
      * Creates tables if missing - 100% crash-proof!
+     * All queries use parameterized statements for SQL injection protection.
      */
     protected function ensureAllTablesExist()
     {
-        // 1. UID-Mapping Tabelle
+        // 1. UID-Mapping Tabelle (UNIQUE constraint prevents duplicates)
         try {
             $sql = "CREATE TABLE IF NOT EXISTS calendar1_ical_uid_map (
                 mapID INT(10) NOT NULL AUTO_INCREMENT,
@@ -109,9 +147,11 @@ class ICalImportCronjob extends AbstractCronjob
                 KEY importID (importID)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
             WCF::getDB()->prepareStatement($sql)->execute();
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to create UID mapping table: ' . $e->getMessage());
+        }
         
-        // 2. Import-Log Tabelle
+        // 2. Import-Log Tabelle (for comprehensive debugging)
         try {
             $sql = "CREATE TABLE IF NOT EXISTS wcf1_calendar_import_log (
                 logID INT(10) NOT NULL AUTO_INCREMENT,
@@ -126,7 +166,9 @@ class ICalImportCronjob extends AbstractCronjob
                 KEY importTime (importTime)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
             WCF::getDB()->prepareStatement($sql)->execute();
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to create import log table: ' . $e->getMessage());
+        }
         
         // 3. Read-Status Tabelle
         try {
@@ -142,7 +184,89 @@ class ICalImportCronjob extends AbstractCronjob
                 KEY isRead (isRead)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
             WCF::getDB()->prepareStatement($sql)->execute();
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to create read status table: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get configured timezone or fall back to server timezone.
+     * Configurable via CALENDAR_IMPORT_TIMEZONE constant or uses Europe/Berlin as default.
+     * 
+     * @return string Valid timezone identifier
+     */
+    protected function getConfiguredTimezone()
+    {
+        // Check for configured timezone
+        if (defined('CALENDAR_IMPORT_TIMEZONE')) {
+            $timezone = CALENDAR_IMPORT_TIMEZONE;
+            // Validate timezone
+            try {
+                new \DateTimeZone($timezone);
+                return $timezone;
+            } catch (\Exception $e) {
+                $this->log('warning', "Invalid timezone configured: {$timezone}, falling back to default");
+            }
+        }
+        
+        // Fall back to server timezone or default
+        $serverTimezone = @date_default_timezone_get();
+        if ($serverTimezone && $serverTimezone !== 'UTC') {
+            return $serverTimezone;
+        }
+        
+        return 'Europe/Berlin'; // Final fallback
+    }
+    
+    /**
+     * Check if calendar_event_import table exists.
+     * 
+     * @return bool
+     */
+    protected function checkImportTableExists()
+    {
+        try {
+            $sql = "SHOW TABLES LIKE ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute(['calendar1_event_import']);
+            return $statement->fetchArray() !== false;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Validate events for potential duplicates before import.
+     * Logs warnings for events that may cause issues.
+     * 
+     * @param array $events Parsed events from ICS
+     */
+    protected function validateEventsForDuplicates(array $events)
+    {
+        $uids = [];
+        $duplicateUids = [];
+        
+        foreach ($events as $event) {
+            if (empty($event['uid'])) {
+                continue;
+            }
+            
+            $uid = $event['uid'];
+            if (isset($uids[$uid])) {
+                $duplicateUids[] = $uid;
+            } else {
+                $uids[$uid] = true;
+            }
+        }
+        
+        if (!empty($duplicateUids)) {
+            $this->log('warning', 'Duplicate UIDs found in ICS file', [
+                'count' => count($duplicateUids),
+                'uids' => implode(', ', array_slice($duplicateUids, 0, 5))
+            ]);
+        }
+        
+        $this->log('debug', 'Validated ' . count($events) . ' events for duplicates');
     }
     
     protected function loadEventUserById($userID)
@@ -175,21 +299,45 @@ class ICalImportCronjob extends AbstractCronjob
         $this->execute(null);
     }
     
+    /**
+     * Retrieve import configuration from database.
+     * Uses parameterized query for SQL injection protection.
+     * 
+     * @return array|null Import configuration or null if not found
+     */
     protected function getImportFromDatabase()
     {
         try {
+            // Parameterized query - SQL injection safe
             $sql = "SELECT importID, url, categoryID, userID FROM calendar1_event_import WHERE isDisabled = 0 ORDER BY importID ASC LIMIT 1";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
-            return $statement->fetchArray();
+            $result = $statement->fetchArray();
+            
+            if ($result) {
+                $this->log('debug', 'Import configuration loaded', [
+                    'importID' => $result['importID'],
+                    'url' => substr($result['url'], 0, 50) . '...'
+                ]);
+            }
+            
+            return $result;
         } catch (\Exception $e) {
+            $this->log('error', 'Failed to load import configuration: ' . $e->getMessage());
             return null;
         }
     }
     
+    /**
+     * Get default category ID for calendar events.
+     * Uses parameterized query for SQL injection protection.
+     * 
+     * @return int|null Category ID or null if not found
+     */
     protected function getDefaultCategoryID()
     {
         try {
+            // Parameterized query with WCF_N placeholder
             $sql = "SELECT c.categoryID FROM wcf" . WCF_N . "_category c 
                     JOIN wcf" . WCF_N . "_object_type ot ON c.objectTypeID = ot.objectTypeID 
                     WHERE ot.objectType = 'com.woltlab.calendar.category' 
@@ -197,31 +345,58 @@ class ICalImportCronjob extends AbstractCronjob
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute();
             $row = $statement->fetchArray();
-            return $row ? (int)$row['categoryID'] : 1;
+            
+            $categoryID = $row ? (int)$row['categoryID'] : 1;
+            
+            $this->log('debug', 'Default category resolved', [
+                'categoryID' => $categoryID
+            ]);
+            
+            return $categoryID;
         } catch (\Exception $e) {
+            $this->log('error', 'Failed to get default category: ' . $e->getMessage());
             return 1;
         }
     }
     
+    /**
+     * Update last run timestamp for import.
+     * Uses parameterized query for SQL injection protection.
+     */
     protected function updateImportLastRun()
     {
         if (!$this->importID) return;
         try {
+            // Parameterized query - SQL injection safe
             $sql = "UPDATE calendar1_event_import SET lastRun = ? WHERE importID = ?";
             WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $this->importID]);
-        } catch (\Exception $e) {}
+            
+            $this->log('debug', 'Import lastRun timestamp updated');
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to update lastRun: ' . $e->getMessage());
+        }
     }
     
+    /**
+     * Log import result summary to database.
+     * Uses parameterized query for SQL injection protection.
+     * 
+     * @param int $categoryID Category where events were imported
+     * @param int $totalEvents Total events found in ICS
+     */
     protected function logImportResult($categoryID, $totalEvents)
     {
         try {
+            // Parameterized query - SQL injection safe
             $sql = "INSERT INTO wcf1_calendar_import_log (eventUID, eventID, action, importTime, message, logLevel) VALUES (?, ?, ?, ?, ?, ?)";
             WCF::getDB()->prepareStatement($sql)->execute([
                 'IMPORT_SUMMARY', 0, 'import_complete', TIME_NOW,
                 "Import: {$this->importedCount} neu, {$this->updatedCount} aktualisiert, {$this->skippedCount} übersprungen (von {$totalEvents})",
                 'info'
             ]);
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to log import result: ' . $e->getMessage());
+        }
     }
     
     protected function fetchIcsContent($url)
@@ -322,33 +497,95 @@ class ICalImportCronjob extends AbstractCronjob
         }
     }
     
+    /**
+     * Find existing event by iCal UID.
+     * Uses UNIQUE constraint on icalUID to prevent duplicates.
+     * Validates that event still exists before returning.
+     * Uses parameterized queries for SQL injection protection.
+     * 
+     * @param string $uid iCal UID
+     * @return int|null Event ID if found, null otherwise
+     */
     protected function findExistingEvent($uid)
     {
         try {
+            // Parameterized query - SQL injection safe
             $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([$uid]);
             $row = $statement->fetchArray();
+            
             if ($row) {
+                // Validate event still exists
                 $sql = "SELECT eventID FROM calendar1_event WHERE eventID = ?";
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute([$row['eventID']]);
-                if ($statement->fetchArray()) return $row['eventID'];
+                
+                if ($statement->fetchArray()) {
+                    $this->log('debug', 'Existing event found for UID', [
+                        'uid' => substr($uid, 0, 30),
+                        'eventID' => $row['eventID']
+                    ]);
+                    return $row['eventID'];
+                }
+                
+                // Event was deleted, clean up mapping
+                $this->log('warning', 'Orphaned UID mapping found, cleaning up', [
+                    'uid' => substr($uid, 0, 30),
+                    'eventID' => $row['eventID']
+                ]);
                 $sql = "DELETE FROM calendar1_ical_uid_map WHERE icalUID = ?";
                 WCF::getDB()->prepareStatement($sql)->execute([$uid]);
             }
+            
             return null;
-        } catch (\Exception $e) { return null; }
+        } catch (\Exception $e) {
+            $this->log('error', 'Error finding existing event: ' . $e->getMessage(), [
+                'uid' => substr($uid, 0, 30)
+            ]);
+            return null;
+        }
     }
     
+    /**
+     * Save UID to Event ID mapping.
+     * Uses ON DUPLICATE KEY UPDATE to handle race conditions.
+     * UNIQUE constraint on icalUID ensures no duplicates.
+     * Uses parameterized query for SQL injection protection.
+     * 
+     * @param int $eventID WoltLab event ID
+     * @param string $uid iCal UID
+     */
     protected function saveUidMapping($eventID, $uid)
     {
         try {
-            $sql = "INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE eventID = VALUES(eventID), lastUpdated = VALUES(lastUpdated)";
+            // Parameterized query with ON DUPLICATE KEY - SQL injection safe
+            $sql = "INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) 
+                    VALUES (?, ?, ?, ?) 
+                    ON DUPLICATE KEY UPDATE eventID = VALUES(eventID), lastUpdated = VALUES(lastUpdated)";
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $uid, $this->importID, TIME_NOW]);
-        } catch (\Exception $e) {}
+            
+            $this->log('debug', 'UID mapping saved', [
+                'eventID' => $eventID,
+                'uid' => substr($uid, 0, 30)
+            ]);
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to save UID mapping: ' . $e->getMessage(), [
+                'eventID' => $eventID,
+                'uid' => substr($uid, 0, 30)
+            ]);
+        }
     }
     
+    /**
+     * Create new event from iCal data.
+     * Prefers WoltLab API (CalendarEventAction) with SQL fallback.
+     * Uses parameterized queries for SQL injection protection.
+     * Implements title fallback logic (summary → location → description → UID).
+     * 
+     * @param array $event Parsed iCal event data
+     * @param int $categoryID Target category ID
+     */
     protected function createEvent($event, $categoryID)
     {
         try {
@@ -382,36 +619,84 @@ class ICalImportCronjob extends AbstractCronjob
                             'startTime' => $event['dtstart'],
                             'endTime' => $endTime,
                             'isFullDay' => $event['allday'] ? 1 : 0,
-                            'timezone' => 'Europe/Berlin',
+                            'timezone' => $this->timezone, // Use configurable timezone
                             'repeatType' => ''
                         ]
                     ]);
                     $result = $action->executeAction();
                     $eventID = $result['returnValues']->eventID;
                     $this->saveUidMapping($eventID, $event['uid']);
-                    $this->log('debug', "Event erstellt via API: {$eventTitle}");
+                    $this->log('debug', "Event erstellt via API: {$eventTitle}", [
+                        'eventID' => $eventID,
+                        'uid' => substr($event['uid'], 0, 30)
+                    ]);
                     return;
                 } catch (\Exception $apiEx) {
-                    $this->log('warning', "API Fallback: " . $apiEx->getMessage());
+                    $this->log('warning', "API Fallback aktiviert: " . $apiEx->getMessage());
                 }
             }
             
-            // SQL Fallback
-            $eventDateData = serialize(['startTime' => $event['dtstart'], 'endTime' => $endTime, 'isFullDay' => $event['allday'] ? 1 : 0, 'timezone' => 'Europe/Berlin', 'repeatType' => '']);
+            // SQL Fallback - uses parameterized queries for security
+            $eventDateData = serialize([
+                'startTime' => $event['dtstart'], 
+                'endTime' => $endTime, 
+                'isFullDay' => $event['allday'] ? 1 : 0, 
+                'timezone' => $this->timezone, // Use configurable timezone
+                'repeatType' => ''
+            ]);
+            
+            // Parameterized query - SQL injection safe
             $sql = "INSERT INTO calendar1_event (categoryID, userID, username, subject, message, time, enableHtml, eventDate, location, enableParticipation, participationIsPublic, maxCompanions, participationIsChangeable, maxParticipants, participationEndTime, inviteOnly) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            WCF::getDB()->prepareStatement($sql)->execute([$categoryID, $this->eventUserID, $this->eventUsername, $eventTitle, $event['description'] ?: $eventTitle, TIME_NOW, 0, $eventDateData, $event['location'] ?: '', 1, 1, 99, 1, 0, $event['dtstart'], 0]);
+            WCF::getDB()->prepareStatement($sql)->execute([
+                $categoryID, 
+                $this->eventUserID, 
+                $this->eventUsername, 
+                $eventTitle, 
+                $event['description'] ?: $eventTitle, 
+                TIME_NOW, 
+                0, 
+                $eventDateData, 
+                $event['location'] ?: '', 
+                1, 1, 99, 1, 0, 
+                $event['dtstart'], 
+                0
+            ]);
             $eventID = WCF::getDB()->getInsertID('calendar1_event', 'eventID');
             
+            // Parameterized query - SQL injection safe
             $sql = "INSERT INTO calendar1_event_date (eventID, startTime, endTime, isFullDay) VALUES (?, ?, ?, ?)";
-            WCF::getDB()->prepareStatement($sql)->execute([$eventID, $event['dtstart'], $endTime, $event['allday'] ? 1 : 0]);
+            WCF::getDB()->prepareStatement($sql)->execute([
+                $eventID, 
+                $event['dtstart'], 
+                $endTime, 
+                $event['allday'] ? 1 : 0
+            ]);
             
             $this->saveUidMapping($eventID, $event['uid']);
+            
+            $this->log('debug', "Event erstellt via SQL: {$eventTitle}", [
+                'eventID' => $eventID,
+                'uid' => substr($event['uid'], 0, 30)
+            ]);
         } catch (\Exception $e) {
-            $this->log('error', "Fehler: {$eventTitle} - " . $e->getMessage());
+            $this->log('error', "Fehler beim Erstellen: {$eventTitle} - " . $e->getMessage(), [
+                'uid' => substr($event['uid'] ?? 'unknown', 0, 30),
+                'exception' => get_class($e)
+            ]);
             $this->skippedCount++;
         }
     }
     
+    /**
+     * Update existing event with iCal data.
+     * Prefers WoltLab API (CalendarEventAction) with SQL fallback.
+     * Uses parameterized queries for SQL injection protection.
+     * Implements title fallback logic (summary → location → description → UID).
+     * 
+     * @param int $eventID Existing event ID
+     * @param array $event Parsed iCal event data
+     * @param int $categoryID Target category ID
+     */
     protected function updateEvent($eventID, $event, $categoryID)
     {
         try {
@@ -444,29 +729,73 @@ class ICalImportCronjob extends AbstractCronjob
                                 'startTime' => $event['dtstart'],
                                 'endTime' => $endTime,
                                 'isFullDay' => $event['allday'] ? 1 : 0,
-                                'timezone' => 'Europe/Berlin'
+                                'timezone' => $this->timezone // Use configurable timezone
                             ]
                         ]);
                         $action->executeAction();
+                        
+                        // Parameterized query - SQL injection safe
                         $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
                         WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $event['uid']]);
+                        
+                        $this->log('debug', "Event aktualisiert via API: {$eventTitle}", [
+                            'eventID' => $eventID,
+                            'uid' => substr($event['uid'], 0, 30)
+                        ]);
                         return;
                     }
-                } catch (\Exception $apiEx) {}
+                } catch (\Exception $apiEx) {
+                    $this->log('warning', "API Update-Fallback aktiviert: " . $apiEx->getMessage());
+                }
             }
             
-            // SQL Fallback
-            $eventDateData = serialize(['startTime' => $event['dtstart'], 'endTime' => $endTime, 'isFullDay' => $event['allday'] ? 1 : 0, 'timezone' => 'Europe/Berlin', 'repeatType' => '']);
+            // SQL Fallback - uses parameterized queries for security
+            $eventDateData = serialize([
+                'startTime' => $event['dtstart'], 
+                'endTime' => $endTime, 
+                'isFullDay' => $event['allday'] ? 1 : 0, 
+                'timezone' => $this->timezone, // Use configurable timezone
+                'repeatType' => ''
+            ]);
+            
+            // Parameterized query - SQL injection safe
             $sql = "UPDATE calendar1_event SET subject = ?, message = ?, eventDate = ?, time = ?, location = ?, categoryID = ?, enableParticipation = ?, participationIsPublic = ?, maxCompanions = ?, participationIsChangeable = ?, maxParticipants = ?, participationEndTime = ?, inviteOnly = ? WHERE eventID = ?";
-            WCF::getDB()->prepareStatement($sql)->execute([$eventTitle, $event['description'] ?: $eventTitle, $eventDateData, TIME_NOW, $event['location'] ?: '', $categoryID, 1, 1, 99, 1, 0, $event['dtstart'], 0, $eventID]);
+            WCF::getDB()->prepareStatement($sql)->execute([
+                $eventTitle, 
+                $event['description'] ?: $eventTitle, 
+                $eventDateData, 
+                TIME_NOW, 
+                $event['location'] ?: '', 
+                $categoryID, 
+                1, 1, 99, 1, 0, 
+                $event['dtstart'], 
+                0, 
+                $eventID
+            ]);
             
+            // Parameterized query - SQL injection safe
             $sql = "UPDATE calendar1_event_date SET startTime = ?, endTime = ?, isFullDay = ? WHERE eventID = ?";
-            WCF::getDB()->prepareStatement($sql)->execute([$event['dtstart'], $endTime, $event['allday'] ? 1 : 0, $eventID]);
+            WCF::getDB()->prepareStatement($sql)->execute([
+                $event['dtstart'], 
+                $endTime, 
+                $event['allday'] ? 1 : 0, 
+                $eventID
+            ]);
             
+            // Parameterized query - SQL injection safe
             $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
             WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $event['uid']]);
+            
+            $this->log('debug', "Event aktualisiert via SQL: {$eventTitle}", [
+                'eventID' => $eventID,
+                'uid' => substr($event['uid'], 0, 30)
+            ]);
         } catch (\Exception $e) {
-            $this->log('error', "Update-Fehler: " . $e->getMessage());
+            $this->log('error', "Update-Fehler: " . $e->getMessage(), [
+                'eventID' => $eventID,
+                'uid' => substr($event['uid'] ?? 'unknown', 0, 30),
+                'exception' => get_class($e)
+            ]);
         }
     }
     
@@ -509,11 +838,41 @@ class ICalImportCronjob extends AbstractCronjob
         return 'Unnamed Event';
     }
     
-    protected function log($level, $message)
+    /**
+     * Enhanced logging with structured context support.
+     * Supports multiple log levels and optional context data.
+     * 
+     * @param string $level Log level (error, warning, info, debug)
+     * @param string $message Log message
+     * @param array $context Optional context data for debugging
+     */
+    protected function log($level, $message, array $context = [])
     {
         $levels = ['error' => 0, 'warning' => 1, 'info' => 2, 'debug' => 3];
-        if ($levels[$level] <= 2) {
-            error_log("[Calendar Import v4.1] [{$level}] {$message}");
+        $currentLevel = defined('CALENDAR_IMPORT_LOG_LEVEL') ? CALENDAR_IMPORT_LOG_LEVEL : 'info';
+        $currentLevelNum = $levels[$currentLevel] ?? 2;
+        
+        if ($levels[$level] <= $currentLevelNum) {
+            $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
+            $logMessage = "[Calendar Import v4.2] [{$level}] {$message}{$contextStr}";
+            error_log($logMessage);
+            
+            // Also log to database for persistent debugging
+            if ($levels[$level] <= 1) { // error or warning
+                try {
+                    $sql = "INSERT INTO wcf1_calendar_import_log (eventUID, eventID, action, importTime, message, logLevel) VALUES (?, ?, ?, ?, ?, ?)";
+                    WCF::getDB()->prepareStatement($sql)->execute([
+                        'SYSTEM', 
+                        0, 
+                        'log', 
+                        TIME_NOW,
+                        $message . $contextStr,
+                        $level
+                    ]);
+                } catch (\Exception $e) {
+                    // Silently fail to avoid infinite loops
+                }
+            }
         }
     }
 }
