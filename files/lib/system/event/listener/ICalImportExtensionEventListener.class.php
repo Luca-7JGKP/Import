@@ -156,7 +156,10 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
                 $row = $statement->fetchArray();
                 return $row ? $row['startTime'] : null;
             } catch (\Exception $e) {
-                $this->log('error', 'Failed to get event start time: ' . $e->getMessage());
+                $this->log('Failed to get event start time', [
+                    'error' => $e->getMessage(),
+                    'eventID' => $event->eventID ?? 'unknown'
+                ]);
                 return null;
             }
         }
@@ -192,7 +195,10 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
                 'affectedRows' => $statement->getAffectedRows()
             ]);
         } catch (\Exception $e) {
-            $this->log('error', 'Failed to mark event as read: ' . $e->getMessage());
+            $this->log('Failed to mark event as read', [
+                'error' => $e->getMessage(),
+                'eventID' => $eventID
+            ]);
         }
     }
     
@@ -218,7 +224,10 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
                 ]);
             }
         } catch (\Exception $e) {
-            $this->log('error', 'Failed to mark event as unread: ' . $e->getMessage());
+            $this->log('Failed to mark event as unread', [
+                'error' => $e->getMessage(),
+                'eventID' => $eventID
+            ]);
         }
         
         // Legacy-Tabelle auch bereinigen falls vorhanden
@@ -254,7 +263,9 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
                 $row = $statement->fetchArray();
                 $objectTypeID = $row ? $row['objectTypeID'] : 0;
             } catch (\Exception $e) {
-                $this->log('error', 'Failed to get object type: ' . $e->getMessage());
+                $this->log('Failed to get object type', [
+                    'error' => $e->getMessage()
+                ]);
                 $objectTypeID = 0;
             }
         }
@@ -289,7 +300,10 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
     protected function logAction($action, $eventID, $event) {
         if (!defined('CALENDAR_IMPORT_LOG_LEVEL') || CALENDAR_IMPORT_LOG_LEVEL !== 'debug') return;
         $title = isset($event->subject) ? $event->subject : '';
-        $this->log("Event {$action}: ID={$eventID}, Title={$title}");
+        $this->log("Event {$action}", [
+            'eventID' => $eventID,
+            'title' => $title
+        ]);
     }
     
     /**
