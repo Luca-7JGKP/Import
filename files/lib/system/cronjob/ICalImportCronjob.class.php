@@ -306,20 +306,46 @@ class ICalImportCronjob extends AbstractCronjob
         return $events;
     }
     
+    /**
+     * Parse ICS date/time value to Unix timestamp.
+     * Handles timezone correctly:
+     * - Dates ending with 'Z' are treated as UTC
+     * - Dates without 'Z' are treated as server timezone
+     * - All-day events (8-digit dates) are set to midnight
+     * - No double offset calculations are performed
+     * 
+     * @param string $value ICS date value (e.g., "20260115T180000Z")
+     * @param string $key Full ICS property key (for detecting VALUE=DATE)
+     * @return int|null Unix timestamp or null if parsing fails
+     */
     protected function parseIcsDate($value, $key)
     {
         $value = preg_replace('/[^0-9TZ]/', '', $value);
+        
+        // All-day events (8-digit date format: YYYYMMDD)
         if (strlen($value) === 8) {
             $dt = \DateTime::createFromFormat('Ymd', $value);
-            if ($dt) { $dt->setTime(0, 0, 0); return $dt->getTimestamp(); }
+            if ($dt) { 
+                $dt->setTime(0, 0, 0); 
+                return $dt->getTimestamp(); 
+            }
         }
+        
+        // Date-time events (format: YYYYMMDDTHHMMSS with optional Z)
         if (preg_match('/(\d{8})T(\d{6})Z?/', $value, $matches)) {
             $dateStr = $matches[1] . 'T' . $matches[2];
-            $dt = substr($value, -1) === 'Z' 
-                ? \DateTime::createFromFormat('Ymd\THis', $dateStr, new \DateTimeZone('UTC'))
-                : \DateTime::createFromFormat('Ymd\THis', $dateStr);
+            
+            // UTC time (ends with Z)
+            if (substr($value, -1) === 'Z') {
+                $dt = \DateTime::createFromFormat('Ymd\THis', $dateStr, new \DateTimeZone('UTC'));
+            } else {
+                // Local time (no Z suffix) - uses server timezone
+                $dt = \DateTime::createFromFormat('Ymd\THis', $dateStr);
+            }
+            
             if ($dt) return $dt->getTimestamp();
         }
+        
         return null;
     }
     
@@ -328,6 +354,14 @@ class ICalImportCronjob extends AbstractCronjob
         return trim(str_replace(['\\n', '\\,', '\\;', '\\\\'], ["\n", ',', ';', '\\'], $value));
     }
     
+    /**
+     * Import or update a single event.
+     * Checks if the event already exists via UID mapping before creating.
+     * This prevents duplicate event creation.
+     * 
+     * @param array $event Parsed ICS event data
+     * @param int $categoryID WoltLab calendar category ID
+     */
     protected function importEvent($event, $categoryID)
     {
         $existingEventID = $this->findExistingEvent($event['uid']);
@@ -340,6 +374,14 @@ class ICalImportCronjob extends AbstractCronjob
         }
     }
     
+    /**
+     * Find existing event by ICS UID.
+     * Uses the UID mapping table to prevent duplicate imports.
+     * Also validates that the mapped event still exists in the database.
+     * 
+     * @param string $uid ICS UID
+     * @return int|null Event ID if found, null otherwise
+     */
     protected function findExistingEvent($uid)
     {
         try {
@@ -348,10 +390,13 @@ class ICalImportCronjob extends AbstractCronjob
             $statement->execute([$uid]);
             $row = $statement->fetchArray();
             if ($row) {
+                // Verify event still exists
                 $sql = "SELECT eventID FROM calendar1_event WHERE eventID = ?";
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute([$row['eventID']]);
                 if ($statement->fetchArray()) return $row['eventID'];
+                
+                // Event was deleted, clean up mapping
                 $sql = "DELETE FROM calendar1_ical_uid_map WHERE icalUID = ?";
                 WCF::getDB()->prepareStatement($sql)->execute([$uid]);
             }
@@ -359,6 +404,13 @@ class ICalImportCronjob extends AbstractCronjob
         } catch (\Exception $e) { return null; }
     }
     
+    /**
+     * Save UID to Event ID mapping.
+     * Creates or updates the mapping to prevent duplicate imports.
+     * 
+     * @param int $eventID WoltLab event ID
+     * @param string $uid ICS UID
+     */
     protected function saveUidMapping($eventID, $uid)
     {
         try {
@@ -498,9 +550,21 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Get event title with fallback logic.
-     * Ensures every event has a non-empty title.
-     * Fallback order: summary → location → description → UID-based title
+     * Get event title with comprehensive fallback logic.
+     * Ensures every event has a non-empty title to prevent type errors.
+     * 
+     * Fallback order:
+     * 1. SUMMARY field (primary)
+     * 2. LOCATION field with "Event: " prefix
+     * 3. First 50 characters of DESCRIPTION
+     * 4. UID-based title "Event [first 20 chars of UID]"
+     * 5. Generic "Unnamed Event" as last resort
+     * 
+     * This prevents the return value issue where getTitle() could return null,
+     * causing type errors in WoltLab's calendar system.
+     * 
+     * @param array $event Parsed ICS event data
+     * @return string Non-empty event title (never null or empty)
      */
     protected function getEventTitle($event)
     {
