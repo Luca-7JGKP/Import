@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.1.1
+# 📅 Kalender iCal Import Plugin v4.2.0
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.1.1 |
+| **Version** | 4.2.0 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -24,13 +24,16 @@ Importiert **automatisch** Kalender-Events aus ICS-Dateien (z.B. Mainz 05 Spielp
 | Feature | Beschreibung |
 |---------|--------------|
 | 🚀 **Vollautomatisch** | Keine ACP-Konfiguration nötig |
-| 🔄 **Keine Duplikate** | UID-Mapping verhindert doppelte Events |
+| 🔄 **Keine Duplikate** | UID-Mapping mit UNIQUE constraint verhindert doppelte Events |
 | 📝 **Event-Threads** | Automatisch Forum-Threads via WoltLab API erstellen |
 | 🏷️ **Titel-Fallback** | Events erhalten immer einen Titel (Summary → Location → Description → UID) |
 | 👥 **Teilnahme** | 99 Begleiter, öffentlich, änderbar |
 | 🔔 **Gelesen/Ungelesen** | Neue Events = ungelesen |
 | ⏰ **Cronjob** | Alle 30 Minuten automatischer Import |
-| ⏱️ **Zeitzonen-Fix** | Korrekte Timezone-Behandlung ohne Workarounds |
+| 🌍 **Konfigurierbare Timezone** | Unterstützt alle PHP-Timezones (default: Europe/Berlin) |
+| 🔒 **SQL Injection Schutz** | Alle Queries nutzen parameterized statements |
+| 📊 **Enhanced Logging** | Strukturiertes Logging mit Context-Daten |
+| 🛡️ **WoltLab API Integration** | Nutzt CalendarEventAction mit SQL-Fallback |
 
 ---
 
@@ -50,6 +53,38 @@ bash build.sh
 2. Datei `com.lucaberwind.wcf.calendar.import.tar` hochladen
 3. **Installieren** klicken
 4. **Cache leeren** (ACP → Übersicht → Cache)
+
+---
+
+## ⚙️ Konfiguration (optional)
+
+### Timezone konfigurieren
+
+Standardmäßig wird `Europe/Berlin` verwendet. Um eine andere Timezone zu nutzen:
+
+**In `config.inc.php` einfügen:**
+```php
+// Timezone für Calendar Import
+define('CALENDAR_IMPORT_TIMEZONE', 'America/New_York');
+```
+
+**Unterstützte Timezones:** Alle PHP-Timezones (siehe [PHP Timezones](https://www.php.net/manual/en/timezones.php))
+
+### Log Level konfigurieren
+
+Standard ist `info`. Für mehr Details:
+
+**In `config.inc.php` einfügen:**
+```php
+// Log Level: error, warning, info, debug
+define('CALENDAR_IMPORT_LOG_LEVEL', 'debug');
+```
+
+**Log Levels:**
+- `error`: Nur kritische Fehler
+- `warning`: Fehler + Warnungen (z.B. API Fallback)
+- `info`: Standard-Level mit Import-Statistiken
+- `debug`: Detaillierte Debug-Ausgaben für jeden Event
 
 ---
 
@@ -221,6 +256,16 @@ WHERE m.mapID IS NULL;
 ---
 
 ## 📝 Changelog
+
+### v4.2.0 (2026-01-15) - WoltLab Suite 6.1 Best Practices
+- ✅ **Konfigurierbare Timezone** - Unterstützt alle PHP-Timezones
+- ✅ **Enhanced Error Logging** - Strukturiertes Logging mit Context-Daten
+- ✅ **SQL Injection Protection** - Dokumentiert und verifiziert alle parameterisierten Queries
+- ✅ **Improved UID Validation** - Duplicate-Check vor Import mit Warnung
+- ✅ **Better Debug Tools** - Log-Level konfigurierbar (error, warning, info, debug)
+- ✅ **Comprehensive Documentation** - Alle Methoden dokumentiert mit Security-Hinweisen
+- ✅ **API-First Approach** - WoltLab API primär, SQL als Fallback
+- ✅ **Error Context** - Exceptions mit vollständigem Trace-Kontext
 
 ### v4.1.1 (2026-01-08)
 - ✅ **Event-Titel-Fallback** - Kein Event ohne Titel mehr
