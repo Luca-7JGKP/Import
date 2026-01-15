@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.1
+# 📅 Kalender iCal Import Plugin v4.1.1
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.1.0 |
+| **Version** | 4.1.1 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -25,10 +25,12 @@ Importiert **automatisch** Kalender-Events aus ICS-Dateien (z.B. Mainz 05 Spielp
 |---------|--------------|
 | 🚀 **Vollautomatisch** | Keine ACP-Konfiguration nötig |
 | 🔄 **Keine Duplikate** | UID-Mapping verhindert doppelte Events |
-| 📝 **Event-Threads** | Automatisch Forum-Threads erstellen |
+| 📝 **Event-Threads** | Automatisch Forum-Threads via WoltLab API erstellen |
+| 🏷️ **Titel-Fallback** | Events erhalten immer einen Titel (Summary → Location → Description → UID) |
 | 👥 **Teilnahme** | 99 Begleiter, öffentlich, änderbar |
 | 🔔 **Gelesen/Ungelesen** | Neue Events = ungelesen |
 | ⏰ **Cronjob** | Alle 30 Minuten automatischer Import |
+| ⏱️ **Zeitzonen-Fix** | Korrekte Timezone-Behandlung ohne Workarounds |
 
 ---
 
@@ -92,16 +94,34 @@ bash build.sh
                   ▼
 ┌─────────────────────────────────────────────────┐
 │  3. Für jedes Event prüfen:                     │
-│     Existiert UID schon? → Update               │
-│     UID neu? → Neues Event erstellen            │
+│     - Titel vorhanden? → Fallback anwenden      │
+│     - UID existiert schon? → Update             │
+│     - UID neu? → Neues Event erstellen          │
 └─────────────────┬───────────────────────────────┘
                   ▼
 ┌─────────────────────────────────────────────────┐
 │  4. WoltLab API wird genutzt                    │
-│     → Event-Thread wird erstellt                │
+│     → Event-Thread wird automatisch erstellt    │
 │     → Suchindex wird aktualisiert               │
 │     → Aktivitäten werden geloggt                │
+│     → Zeitzonen korrekt behandelt               │
 └─────────────────────────────────────────────────┘
+```
+
+### 🏷️ Event-Titel-Fallback
+
+Das Plugin stellt sicher, dass **jedes Event einen Titel** hat:
+
+1. **SUMMARY** vorhanden → Verwendet als Titel ✅
+2. **SUMMARY leer** → Verwendet **LOCATION** als Titel
+3. **LOCATION leer** → Verwendet ersten Teil der **DESCRIPTION**
+4. **Alles leer** → Verwendet **UID** als Basis ("Event xyz...")
+
+**Beispiel:**
+```
+ICS Event ohne SUMMARY:
+  LOCATION: Mewa Arena
+  → Titel: "Event: Mewa Arena" ✅
 ```
 
 ---
@@ -150,6 +170,17 @@ SELECT * FROM calendar1_event_import WHERE isDisabled = 0;
 2. Board-ID muss gesetzt sein (nicht 0)
 3. Kategorie muss aktiviert sein
 
+**Hinweis:** Das Plugin nutzt die offizielle WoltLab API (`CalendarEventAction`), 
+die automatisch Event-Threads erstellt, wenn die Kalender-Einstellungen korrekt sind.
+
+### Events haben keinen Titel
+
+**Lösung:** Ab v4.1.1 ist der Titel-Fallback aktiv. Events erhalten automatisch:
+- Den SUMMARY-Wert (Standard)
+- Oder "Event: [LOCATION]" falls SUMMARY leer
+- Oder die ersten 50 Zeichen der DESCRIPTION
+- Oder "Event [UID]" als letzten Ausweg
+
 ### Duplikate vorhanden
 
 **Lösung:** Alte Events ohne UID-Mapping löschen:
@@ -182,15 +213,23 @@ WHERE m.mapID IS NULL;
 
 | Cronjob | Intervall | Funktion |
 |---------|-----------|----------|
-| `ICalImportCronjob` | 0, 30 | Importiert Events |
-| `FixTimezoneCronjob` | 5, 35 | Korrigiert Zeitzonen |
+| `ICalImportCronjob` | 0, 30 | Importiert Events mit API-Unterstützung |
 | `MarkPastEventsReadCronjob` | 10, 40 | Vergangene als gelesen |
+
+**Hinweis:** Der FixTimezoneCronjob wurde entfernt, da die Zeitzonen nun korrekt behandelt werden.
 
 ---
 
 ## 📝 Changelog
 
-### v4.0.0 (2026-01-07)
+### v4.1.1 (2026-01-08)
+- ✅ **Event-Titel-Fallback** - Kein Event ohne Titel mehr
+- ✅ **API-basierte Thread-Erstellung** dokumentiert
+- ✅ **FixTimezoneCronjob entfernt** - Workaround nicht mehr nötig
+- ✅ **Package.xml aufgeräumt** - Keine veralteten Update-Instructions
+- ✅ **Zeitzonen korrekt** - Keine doppelten Offsets mehr
+
+### v4.1.0 (2026-01-07)
 - ✅ **WoltLab API** statt direktem SQL
 - ✅ **Event-Thread Support** automatisch
 - ✅ **Vollautomatisch** - keine Konfiguration nötig

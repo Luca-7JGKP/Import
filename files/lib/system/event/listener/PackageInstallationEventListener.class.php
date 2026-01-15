@@ -51,7 +51,6 @@ class PackageInstallationEventListener implements IParameterizedEventListener
         try {
             $cronjobClasses = [
                 'wcf\\system\\cronjob\\ICalImportCronjob',
-                'wcf\\system\\cronjob\\FixTimezoneCronjob',
                 'wcf\\system\\cronjob\\MarkPastEventsReadCronjob'
             ];
             
