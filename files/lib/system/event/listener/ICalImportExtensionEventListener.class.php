@@ -315,10 +315,11 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
     protected function log($message, array $context = []) {
         try {
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
-            error_log("[CalendarEventListener v1.5] {$message}{$contextStr}");
+            $fullMessage = $message . $contextStr;
+            error_log("[CalendarEventListener v1.5] {$fullMessage}");
             
             if (class_exists('wcf\system\log\LogHandler')) {
-                \wcf\system\log\LogHandler::getInstance()->log('calendar.import', $message);
+                \wcf\system\log\LogHandler::getInstance()->log('calendar.import', $fullMessage);
             }
         } catch (\Exception $e) {
             // Silently fail to avoid infinite loops

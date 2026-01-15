@@ -203,6 +203,12 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
     protected function log($level, $message, array $context = [])
     {
         $levels = ['error' => 0, 'warning' => 1, 'info' => 2, 'debug' => 3];
+        
+        // Validate log level
+        if (!isset($levels[$level])) {
+            return;
+        }
+        
         $currentLevel = defined('CALENDAR_IMPORT_LOG_LEVEL') ? CALENDAR_IMPORT_LOG_LEVEL : 'info';
         $currentLevelNum = $levels[$currentLevel] ?? 2;
         
