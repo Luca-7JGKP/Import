@@ -74,12 +74,12 @@ class ICalImportCronjob extends AbstractCronjob
             
             foreach ($events as $event) {
                 if (empty($event['uid'])) {
-                    $this->log('warning', "Event skipped: Missing UID");
+                    $this->log('warning', "Event skipped: Missing UID", '', 0);
                     $this->skippedCount++;
                     continue;
                 }
                 if (empty($event['dtstart'])) {
-                    $this->log('warning', "Event skipped: Missing start time (UID: {$event['uid']})");
+                    $this->log('warning', "Event skipped: Missing start time (UID: {$event['uid']})", $event['uid'], 0);
                     $this->skippedCount++;
                     continue;
                 }
@@ -427,7 +427,7 @@ class ICalImportCronjob extends AbstractCronjob
             // Ensure event always has a title (fallback to location, description, or UID)
             $eventTitle = $this->getEventTitle($event);
             
-            $this->log('debug', "Creating event: {$eventTitle} (UID: {$event['uid']}, Start: " . date('Y-m-d H:i:s', $event['dtstart']) . ")");
+            $this->log('debug', "Creating event: {$eventTitle} (UID: {$event['uid']}, Start: " . date('Y-m-d H:i:s', $event['dtstart']) . ")", $event['uid']);
             
             // Try WoltLab API first (for Event-Thread support)
             if (class_exists('calendar\data\event\CalendarEventAction')) {
@@ -461,10 +461,10 @@ class ICalImportCronjob extends AbstractCronjob
                     $result = $action->executeAction();
                     $eventID = $result['returnValues']->eventID;
                     $this->saveUidMapping($eventID, $event['uid']);
-                    $this->log('info', "Event created via API: {$eventTitle} (ID: {$eventID})");
+                    $this->log('info', "Event created via API: {$eventTitle} (ID: {$eventID})", $event['uid'], $eventID);
                     return;
                 } catch (\Exception $apiEx) {
-                    $this->log('warning', "API Fallback for '{$eventTitle}': " . $apiEx->getMessage());
+                    $this->log('warning', "API Fallback for '{$eventTitle}': " . $apiEx->getMessage(), $event['uid']);
                 }
             }
             
@@ -478,9 +478,9 @@ class ICalImportCronjob extends AbstractCronjob
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $event['dtstart'], $endTime, $event['allday'] ? 1 : 0]);
             
             $this->saveUidMapping($eventID, $event['uid']);
-            $this->log('info', "Event created via SQL: {$eventTitle} (ID: {$eventID})");
+            $this->log('info', "Event created via SQL: {$eventTitle} (ID: {$eventID})", $event['uid'], $eventID);
         } catch (\Exception $e) {
-            $this->log('error', "Failed to create event '{$eventTitle}' (UID: {$event['uid']}): " . $e->getMessage());
+            $this->log('error', "Failed to create event '{$eventTitle}' (UID: {$event['uid']}): " . $e->getMessage(), $event['uid']);
             $this->skippedCount++;
         }
     }
@@ -493,7 +493,7 @@ class ICalImportCronjob extends AbstractCronjob
             // Ensure event always has a title (fallback to location, description, or UID)
             $eventTitle = $this->getEventTitle($event);
             
-            $this->log('debug', "Updating event: {$eventTitle} (ID: {$eventID}, UID: {$event['uid']})");
+            $this->log('debug', "Updating event: {$eventTitle} (ID: {$eventID}, UID: {$event['uid']})", $event['uid'], $eventID);
             
             // Try WoltLab API first
             if (class_exists('calendar\data\event\CalendarEvent')) {
@@ -525,11 +525,11 @@ class ICalImportCronjob extends AbstractCronjob
                         $action->executeAction();
                         $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
                         WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $event['uid']]);
-                        $this->log('info', "Event updated via API: {$eventTitle} (ID: {$eventID})");
+                        $this->log('info', "Event updated via API: {$eventTitle} (ID: {$eventID})", $event['uid'], $eventID);
                         return;
                     }
                 } catch (\Exception $apiEx) {
-                    $this->log('warning', "API update fallback for '{$eventTitle}': " . $apiEx->getMessage());
+                    $this->log('warning', "API update fallback for '{$eventTitle}': " . $apiEx->getMessage(), $event['uid'], $eventID);
                 }
             }
             
@@ -543,9 +543,9 @@ class ICalImportCronjob extends AbstractCronjob
             
             $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
             WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $event['uid']]);
-            $this->log('info', "Event updated via SQL: {$eventTitle} (ID: {$eventID})");
+            $this->log('info', "Event updated via SQL: {$eventTitle} (ID: {$eventID})", $event['uid'], $eventID);
         } catch (\Exception $e) {
-            $this->log('error', "Failed to update event '{$eventTitle}' (ID: {$eventID}, UID: {$event['uid']}): " . $e->getMessage());
+            $this->log('error', "Failed to update event '{$eventTitle}' (ID: {$eventID}, UID: {$event['uid']}): " . $e->getMessage(), $event['uid'], $eventID);
         }
     }
     
@@ -600,7 +600,15 @@ class ICalImportCronjob extends AbstractCronjob
         return 'Unnamed Event';
     }
     
-    protected function log($level, $message)
+    /**
+     * Log a message to error log and database.
+     * 
+     * @param string $level Log level (error, warning, info, debug)
+     * @param string $message Log message
+     * @param string $eventUID Optional event UID for context
+     * @param int $eventID Optional event ID for context
+     */
+    protected function log($level, $message, $eventUID = '', $eventID = 0)
     {
         $levels = ['error' => 0, 'warning' => 1, 'info' => 2, 'debug' => 3];
         if ($levels[$level] <= 2) {
@@ -611,8 +619,8 @@ class ICalImportCronjob extends AbstractCronjob
         try {
             $sql = "INSERT INTO wcf1_calendar_import_log (eventUID, eventID, action, importTime, message, logLevel) VALUES (?, ?, ?, ?, ?, ?)";
             WCF::getDB()->prepareStatement($sql)->execute([
-                '', 
-                0, 
+                $eventUID, 
+                $eventID, 
                 'cronjob_log', 
                 TIME_NOW,
                 $message,

@@ -68,26 +68,27 @@ class CalendarImportDebugPage extends AbstractPage {
         // 3. Get table structures for calendar tables
         foreach ($this->debugData['calendarTables'] as $table) {
             try {
-                // Use identifier quoting to prevent SQL injection
-                $sql = "DESCRIBE " . WCF::getDB()->escapeString($table);
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute();
-                $this->debugData['tableStructures'][$table] = [];
-                while ($row = $statement->fetchArray()) {
-                    $this->debugData['tableStructures'][$table][] = $row;
-                }
-            } catch (\Exception $e) {
-                $this->debugData['errors'][] = "DESCRIBE {$table}: " . $e->getMessage();
+                // Table name from whitelist, validate for safety
+                if (preg_match('/^[a-z0-9_]+$/i', $table)) {
+                    $sql = "DESCRIBE `{$table}`";
+                    $statement = WCF::getDB()->prepareStatement($sql);
+                    $statement->execute();
+                    $this->debugData['tableStructures'][$table] = [];
+                    while ($row = $statement->fetchArray()) {
+                        $this->debugData['tableStructures'][$table][] = $row;
+                    }
             }
             
-            // Get first 10 rows - Use identifier quoting to prevent SQL injection
+            // Get first 10 rows - Table name from whitelist, validate for safety
             try {
-                $sql = "SELECT * FROM " . WCF::getDB()->escapeString($table) . " LIMIT 10";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute();
-                $this->debugData['tableContents'][$table] = [];
-                while ($row = $statement->fetchArray()) {
-                    $this->debugData['tableContents'][$table][] = $row;
+                if (preg_match('/^[a-z0-9_]+$/i', $table)) {
+                    $sql = "SELECT * FROM `{$table}` LIMIT 10";
+                    $statement = WCF::getDB()->prepareStatement($sql);
+                    $statement->execute();
+                    $this->debugData['tableContents'][$table] = [];
+                    while ($row = $statement->fetchArray()) {
+                        $this->debugData['tableContents'][$table][] = $row;
+                    }
                 }
             } catch (\Exception $e) {
                 $this->debugData['errors'][] = "SELECT {$table}: " . $e->getMessage();
