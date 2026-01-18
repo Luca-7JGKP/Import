@@ -28,7 +28,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.2.0
+ * @version 4.2.1
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -463,20 +463,63 @@ class ICalImportCronjob extends AbstractCronjob
         return $events;
     }
     
+    /**
+     * Parse iCal date/time value to Unix timestamp.
+     * Handles UTC times (with 'Z' suffix) and local times (without 'Z').
+     * For local times, uses the configured timezone to avoid DST/offset issues.
+     * 
+     * @param string $value iCal date/time value
+     * @param string $key Full iCal property line (may contain TZID parameter)
+     * @return int|null Unix timestamp or null if parsing fails
+     */
     protected function parseIcsDate($value, $key)
     {
         $value = preg_replace('/[^0-9TZ]/', '', $value);
+        
+        // All-day event (DATE format: YYYYMMDD)
         if (strlen($value) === 8) {
-            $dt = \DateTime::createFromFormat('Ymd', $value);
-            if ($dt) { $dt->setTime(0, 0, 0); return $dt->getTimestamp(); }
+            try {
+                $dt = \DateTime::createFromFormat('Ymd', $value, new \DateTimeZone($this->timezone));
+                if ($dt) { 
+                    $dt->setTime(0, 0, 0); 
+                    return $dt->getTimestamp(); 
+                }
+            } catch (\Exception $e) {
+                $this->log('warning', 'Failed to parse all-day date', [
+                    'value' => $value,
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
+        
+        // Date-time format (YYYYMMDDTHHMMSS with optional 'Z')
         if (preg_match('/(\d{8})T(\d{6})Z?/', $value, $matches)) {
             $dateStr = $matches[1] . 'T' . $matches[2];
-            $dt = substr($value, -1) === 'Z' 
-                ? \DateTime::createFromFormat('Ymd\THis', $dateStr, new \DateTimeZone('UTC'))
-                : \DateTime::createFromFormat('Ymd\THis', $dateStr);
-            if ($dt) return $dt->getTimestamp();
+            
+            try {
+                // If ends with 'Z', it's UTC time
+                if (substr($value, -1) === 'Z') {
+                    $dt = \DateTime::createFromFormat('Ymd\THis', $dateStr, new \DateTimeZone('UTC'));
+                    if ($dt) {
+                        return $dt->getTimestamp();
+                    }
+                } else {
+                    // No 'Z' means local time - use configured timezone
+                    // This fixes the 1-hour offset issue by explicitly using the configured timezone
+                    $dt = \DateTime::createFromFormat('Ymd\THis', $dateStr, new \DateTimeZone($this->timezone));
+                    if ($dt) {
+                        return $dt->getTimestamp();
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->log('warning', 'Failed to parse date-time', [
+                    'value' => $value,
+                    'timezone' => $this->timezone,
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
+        
         return null;
     }
     
@@ -594,6 +637,11 @@ class ICalImportCronjob extends AbstractCronjob
             // Ensure event always has a title (fallback to location, description, or UID)
             $eventTitle = $this->getEventTitle($event);
             
+            // Calculate participation end time (registration deadline)
+            // By default, registration closes when the event starts
+            // This can be configured to close earlier if needed
+            $participationEndTime = $this->calculateParticipationEndTime($event['dtstart']);
+            
             // Try WoltLab API first (for Event-Thread support)
             if (class_exists('calendar\data\event\CalendarEventAction')) {
                 try {
@@ -612,7 +660,7 @@ class ICalImportCronjob extends AbstractCronjob
                             'maxCompanions' => 99,
                             'participationIsChangeable' => 1,
                             'maxParticipants' => 0,
-                            'participationEndTime' => $event['dtstart'],
+                            'participationEndTime' => $participationEndTime,
                             'inviteOnly' => 0
                         ],
                         'eventDateData' => [
@@ -658,7 +706,7 @@ class ICalImportCronjob extends AbstractCronjob
                 $eventDateData, 
                 $event['location'] ?: '', 
                 1, 1, 99, 1, 0, 
-                $event['dtstart'], 
+                $participationEndTime, 
                 0
             ]);
             $eventID = WCF::getDB()->getInsertID('calendar1_event', 'eventID');
@@ -705,6 +753,9 @@ class ICalImportCronjob extends AbstractCronjob
             // Ensure event always has a title (fallback to location, description, or UID)
             $eventTitle = $this->getEventTitle($event);
             
+            // Calculate participation end time (registration deadline)
+            $participationEndTime = $this->calculateParticipationEndTime($event['dtstart']);
+            
             // Try WoltLab API first
             if (class_exists('calendar\data\event\CalendarEvent')) {
                 try {
@@ -722,7 +773,7 @@ class ICalImportCronjob extends AbstractCronjob
                                 'maxCompanions' => 99,
                                 'participationIsChangeable' => 1,
                                 'maxParticipants' => 0,
-                                'participationEndTime' => $event['dtstart'],
+                                'participationEndTime' => $participationEndTime,
                                 'inviteOnly' => 0
                             ],
                             'eventDateData' => [
@@ -768,7 +819,7 @@ class ICalImportCronjob extends AbstractCronjob
                 $event['location'] ?: '', 
                 $categoryID, 
                 1, 1, 99, 1, 0, 
-                $event['dtstart'], 
+                $participationEndTime, 
                 0, 
                 $eventID
             ]);
@@ -803,6 +854,9 @@ class ICalImportCronjob extends AbstractCronjob
      * Get event title with fallback logic.
      * Ensures every event has a non-empty title.
      * Fallback order: summary → location → description → UID-based title
+     * 
+     * @param array $event Event data array
+     * @return string Non-empty event title (never null or empty)
      */
     protected function getEventTitle($event)
     {
@@ -832,10 +886,37 @@ class ICalImportCronjob extends AbstractCronjob
         
         // Last resort: Use UID or generic title
         if (!empty($event['uid'])) {
-            return 'Event ' . substr($event['uid'], 0, 20);
+            $uid = trim($event['uid']);
+            if ($uid !== '') {
+                return 'Event ' . substr($uid, 0, 20);
+            }
         }
         
+        // Absolute last resort - should never happen but ensures non-null return
         return 'Unnamed Event';
+    }
+    
+    /**
+     * Calculate participation end time (registration deadline) for an event.
+     * By default, registration closes when the event starts.
+     * Can be configured to close earlier using CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE constant.
+     * 
+     * @param int $eventStartTime Event start timestamp
+     * @return int Participation end time timestamp
+     */
+    protected function calculateParticipationEndTime($eventStartTime)
+    {
+        // Check if custom hours before event start is configured
+        if (defined('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE')) {
+            $hoursBefore = (int)CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE;
+            if ($hoursBefore > 0) {
+                // Registration closes X hours before event start
+                return $eventStartTime - ($hoursBefore * 3600);
+            }
+        }
+        
+        // Default: Registration closes when event starts
+        return $eventStartTime;
     }
     
     /**
@@ -862,7 +943,7 @@ class ICalImportCronjob extends AbstractCronjob
         
         if ($levels[$level] <= $currentLevelNum) {
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
-            $logMessage = "[Calendar Import v4.2] [{$level}] {$message}{$contextStr}";
+            $logMessage = "[Calendar Import v4.2.1] [{$level}] {$message}{$contextStr}";
             error_log($logMessage);
             
             // Also log to database for persistent debugging
