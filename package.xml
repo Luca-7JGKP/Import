@@ -5,7 +5,7 @@
         <packagename language="en">Calendar iCal Import</packagename>
         <packagedescription>Importiert Kalender-Events aus iCal-Dateien vollautomatisch. Features: Intelligente Deduplication, Timezone-Fix, konfigurierbare Anmeldefristen, Event-Title-Fallback, automatische Thread-Erstellung.</packagedescription>
         <packagedescription language="en">Imports calendar events from iCal files fully automatically. Features: Intelligent deduplication, timezone fix, configurable registration deadlines, event title fallback, automatic thread creation.</packagedescription>
-        <version>4.3.1</version>
+        <version>4.3.2</version>
         <date>2026-01-18</date>
     </packageinformation>
     

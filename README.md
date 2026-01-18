@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.3.1
+# 📅 Kalender iCal Import Plugin v4.3.2
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.3.1 |
+| **Version** | 4.3.2 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -314,6 +314,29 @@ LIMIT 10;
 ---
 
 ## 📝 Changelog
+
+### v4.3.2 (2026-01-18) - Critical Duplicate Prevention Fixes
+- 🐛 **Fixed Race Condition in UID Mapping** - Enhanced validation prevents duplicate event creation
+  - Added bidirectional validation: one UID → one event, one event → one UID
+  - Pre-create validation detects and prevents race conditions
+  - saveUidMapping() now validates conflicts before inserting/updating
+- 🔒 **Enhanced Property Matching Validation** - Prevents incorrect event reuse
+  - Validates matched event doesn't already have different UID before reusing
+  - Added detailed logging of match strategies (time_location_exact, time_title_like)
+  - Improved error reporting for property matching failures
+- 📊 **Comprehensive Decision Tracking** - Every decision is now logged
+  - Added 'reason' field to all log entries for debugging
+  - Track whether event was found by uid_mapping_match, property_match, or no_match_found
+  - Log validation failures with detailed context
+- ✅ **Event Existence Validation** - Verify events before update/create
+  - updateEvent() now validates event exists before attempting update
+  - createEvent() performs final UID check before insertion
+  - Better error messages when validation fails
+- 🧪 **Test Script Included** - test_duplicate_prevention.php for validation
+  - Checks UID mapping table structure and constraints
+  - Detects duplicate mappings and orphaned entries
+  - Analyzes recent logs for duplicate-related issues
+  - Provides statistics on events with/without UID mappings
 
 ### v4.3.1 (2026-01-18) - Timezone & Participation Fixes
 - 🐛 **Fixed Timezone Offset Issue** - Local times now correctly use configured timezone (fixes 1-hour offset)
