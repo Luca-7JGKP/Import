@@ -587,15 +587,21 @@ class ICalImportCronjob extends AbstractCronjob
      */
     protected function findEventByProperties($event)
     {
-        if (empty($event['dtstart'])) {
+        // Validate required data
+        if (empty($event['dtstart']) || !is_numeric($event['dtstart'])) {
             return null;
         }
         
         try {
             // Get event title using same fallback logic as import
             $eventTitle = $this->getEventTitle($event);
+            if (empty($eventTitle)) {
+                $this->log('warning', 'Cannot match by properties: event has no title');
+                return null;
+            }
+            
             $location = $event['location'] ?? '';
-            $startTime = $event['dtstart'];
+            $startTime = (int)$event['dtstart'];
             
             // Time window: ±5 minutes to handle slight time differences
             $timeWindowStart = $startTime - 300;
@@ -628,7 +634,10 @@ class ICalImportCronjob extends AbstractCronjob
             
             // Strategy 2: Match by startTime and title similarity (fallback)
             // Use LIKE for partial title matching to handle title changes
-            $titlePattern = '%' . str_replace(['%', '_'], ['\\%', '\\_'], substr($eventTitle, 0, 20)) . '%';
+            // Properly escape backslashes AND LIKE wildcards for SQL injection protection
+            $titleForPattern = substr($eventTitle, 0, 20);
+            $titlePattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $titleForPattern) . '%';
+            
             $sql = "SELECT e.eventID, e.subject, ed.startTime
                     FROM calendar1_event e
                     JOIN calendar1_event_date ed ON e.eventID = ed.eventID
@@ -654,7 +663,8 @@ class ICalImportCronjob extends AbstractCronjob
             return null;
         } catch (\Exception $e) {
             $this->log('error', 'Error finding event by properties: ' . $e->getMessage(), [
-                'startTime' => $event['dtstart'] ?? 'unknown'
+                'startTime' => $event['dtstart'] ?? 'unknown',
+                'trace' => substr($e->getTraceAsString(), 0, 200)
             ]);
             return null;
         }
