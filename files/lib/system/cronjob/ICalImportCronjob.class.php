@@ -29,9 +29,16 @@ use wcf\system\WCF;
  * - Input validation for all external data
  * - Safe error handling without exposing sensitive information
  * 
+ * v4.3.2 Duplicate Prevention Enhancements:
+ * - Enhanced UID mapping validation to prevent conflicts
+ * - Added pre-create validation to detect race conditions
+ * - Improved property matching with stricter validation
+ * - Comprehensive logging with decision tracking
+ * - Validate event doesn't already have different UID before reusing
+ * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.3.1
+ * @version 4.3.2
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -565,7 +572,7 @@ class ICalImportCronjob extends AbstractCronjob
      * 1. Primary: Match by UID in UID mapping table (UNIQUE constraint prevents duplicates)
      * 2. Secondary: If no UID match, try to find event by properties (startTime + location/title)
      *    This handles events imported before UID mapping or when UID changes in ICS feed
-     * 3. If found via properties, create UID mapping for future updates
+     * 3. If found via properties, create UID mapping for future updates (with validation)
      * 
      * Uses parameterized queries for SQL injection protection.
      * 
@@ -590,9 +597,10 @@ class ICalImportCronjob extends AbstractCronjob
                 $statement->execute([$row['eventID']]);
                 
                 if ($statement->fetchArray()) {
-                    $this->log('debug', 'Existing event found by UID', [
+                    $this->log('debug', 'Existing event found by UID mapping', [
                         'uid' => substr($uid, 0, 30),
-                        'eventID' => $row['eventID']
+                        'eventID' => $row['eventID'],
+                        'reason' => 'uid_mapping_match'
                     ]);
                     return $row['eventID'];
                 }
@@ -600,7 +608,8 @@ class ICalImportCronjob extends AbstractCronjob
                 // Event was deleted, clean up orphaned mapping
                 $this->log('warning', 'Orphaned UID mapping found, cleaning up', [
                     'uid' => substr($uid, 0, 30),
-                    'eventID' => $row['eventID']
+                    'eventID' => $row['eventID'],
+                    'reason' => 'event_deleted'
                 ]);
                 $sql = "DELETE FROM calendar1_ical_uid_map WHERE icalUID = ?";
                 WCF::getDB()->prepareStatement($sql)->execute([$uid]);
@@ -613,20 +622,46 @@ class ICalImportCronjob extends AbstractCronjob
             // - Prevents duplicates when re-importing existing events
             $eventID = $this->findEventByProperties($event);
             if ($eventID) {
+                // Before creating mapping, verify this event doesn't already have a DIFFERENT UID
+                $sql = "SELECT icalUID FROM calendar1_ical_uid_map WHERE eventID = ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$eventID]);
+                $existingUID = $statement->fetchColumn();
+                
+                if ($existingUID !== false && $existingUID !== $uid) {
+                    // This event already has a different UID mapping - don't reuse it!
+                    $this->log('warning', 'Event found by properties already has different UID, treating as new event', [
+                        'uid' => substr($uid, 0, 30),
+                        'eventID' => $eventID,
+                        'existingUID' => substr($existingUID, 0, 30),
+                        'reason' => 'uid_mismatch',
+                        'startTime' => $event['dtstart'] ?? 'unknown'
+                    ]);
+                    return null; // Don't reuse this event, create a new one
+                }
+                
                 // Found existing event without UID mapping - create mapping now
                 $this->log('info', 'Found existing event by properties, creating UID mapping', [
                     'uid' => substr($uid, 0, 30),
                     'eventID' => $eventID,
+                    'reason' => 'property_match',
                     'startTime' => $event['dtstart'] ?? 'unknown'
                 ]);
                 $this->saveUidMapping($eventID, $uid);
                 return $eventID;
             }
             
+            $this->log('debug', 'No existing event found, will create new', [
+                'uid' => substr($uid, 0, 30),
+                'reason' => 'no_match_found',
+                'startTime' => $event['dtstart'] ?? 'unknown'
+            ]);
+            
             return null;
         } catch (\Exception $e) {
             $this->log('error', 'Error finding existing event: ' . $e->getMessage(), [
-                'uid' => substr($uid, 0, 30)
+                'uid' => substr($uid, 0, 30),
+                'trace' => substr($e->getTraceAsString(), 0, 500)
             ]);
             return null;
         }
@@ -638,6 +673,11 @@ class ICalImportCronjob extends AbstractCronjob
      * This prevents duplicates for events imported before UID system
      * or when ICS feed changes UIDs.
      * 
+     * Enhanced validation:
+     * - Only matches events from the same importID or without importID
+     * - Validates that matched event doesn't already have a UID mapping to a different UID
+     * - Uses stricter matching criteria to avoid false positives
+     * 
      * Uses parameterized queries for SQL injection protection.
      * 
      * @param array $event Event data with dtstart, location, summary
@@ -647,6 +687,9 @@ class ICalImportCronjob extends AbstractCronjob
     {
         // Validate required data
         if (empty($event['dtstart']) || !is_numeric($event['dtstart'])) {
+            $this->log('debug', 'Cannot match by properties: missing or invalid start time', [
+                'dtstart' => $event['dtstart'] ?? 'null'
+            ]);
             return null;
         }
         
@@ -672,9 +715,16 @@ class ICalImportCronjob extends AbstractCronjob
             $timeWindowStart = $startTime - self::PROPERTY_MATCH_TIME_WINDOW;
             $timeWindowEnd = $startTime + self::PROPERTY_MATCH_TIME_WINDOW;
             
+            $this->log('debug', 'Attempting property-based matching', [
+                'startTime' => date('Y-m-d H:i:s', $startTime),
+                'location' => substr($location, 0, 30),
+                'title' => substr($eventTitle, 0, 30),
+                'timeWindow' => self::PROPERTY_MATCH_TIME_WINDOW . ' seconds'
+            ]);
+            
             // Strategy 1: Match by exact startTime and location (most reliable for sports events)
             if (!empty($location)) {
-                $sql = "SELECT e.eventID, e.subject, e.location, ed.startTime
+                $sql = "SELECT e.eventID, e.subject, e.location, ed.startTime, m.icalUID
                         FROM calendar1_event e
                         JOIN calendar1_event_date ed ON e.eventID = ed.eventID
                         LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
@@ -688,10 +738,12 @@ class ICalImportCronjob extends AbstractCronjob
                 $row = $statement->fetchArray();
                 
                 if ($row) {
-                    $this->log('debug', 'Event found by startTime + location', [
+                    $this->log('info', 'Event matched by startTime + location', [
                         'eventID' => $row['eventID'],
-                        'startTime' => $startTime,
-                        'location' => substr($location, 0, 30)
+                        'subject' => substr($row['subject'], 0, 30),
+                        'startTime' => date('Y-m-d H:i:s', $row['startTime']),
+                        'location' => substr($location, 0, 30),
+                        'matchStrategy' => 'time_location_exact'
                     ]);
                     return $row['eventID'];
                 }
@@ -702,7 +754,7 @@ class ICalImportCronjob extends AbstractCronjob
             $titleForPattern = substr($eventTitle, 0, self::PROPERTY_MATCH_TITLE_LENGTH);
             $titlePattern = $this->escapeLikePattern($titleForPattern);
             
-            $sql = "SELECT e.eventID, e.subject, ed.startTime
+            $sql = "SELECT e.eventID, e.subject, ed.startTime, m.icalUID
                     FROM calendar1_event e
                     JOIN calendar1_event_date ed ON e.eventID = ed.eventID
                     LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
@@ -716,18 +768,27 @@ class ICalImportCronjob extends AbstractCronjob
             $row = $statement->fetchArray();
             
             if ($row) {
-                $this->log('debug', 'Event found by startTime + title similarity', [
+                $this->log('info', 'Event matched by startTime + title similarity', [
                     'eventID' => $row['eventID'],
-                    'startTime' => $startTime,
-                    'titlePattern' => substr($titlePattern, 0, 30)
+                    'subject' => substr($row['subject'], 0, 30),
+                    'startTime' => date('Y-m-d H:i:s', $row['startTime']),
+                    'titlePattern' => substr($titlePattern, 0, 30),
+                    'matchStrategy' => 'time_title_like'
                 ]);
                 return $row['eventID'];
             }
+            
+            $this->log('debug', 'No property match found', [
+                'startTime' => date('Y-m-d H:i:s', $startTime),
+                'location' => substr($location, 0, 30),
+                'title' => substr($eventTitle, 0, 30)
+            ]);
             
             return null;
         } catch (\Exception $e) {
             $this->log('error', 'Error finding event by properties: ' . $e->getMessage(), [
                 'startTime' => $event['dtstart'] ?? 'unknown',
+                'exception' => get_class($e),
                 'trace' => substr($e->getTraceAsString(), 0, 200)
             ]);
             return null;
@@ -751,37 +812,82 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Save UID to Event ID mapping.
-     * Uses ON DUPLICATE KEY UPDATE to handle race conditions.
-     * UNIQUE constraint on icalUID ensures no duplicates.
+     * Save UID to Event ID mapping with enhanced validation.
+     * Validates that:
+     * 1. This UID is not already mapped to a different event
+     * 2. This eventID is not already mapped to a different UID
      * Uses parameterized query for SQL injection protection.
      * 
      * @param int $eventID WoltLab event ID
      * @param string $uid iCal UID
+     * @return bool True if mapping was saved successfully, false otherwise
      */
     protected function saveUidMapping($eventID, $uid)
     {
         try {
-            // Parameterized query with ON DUPLICATE KEY - SQL injection safe
+            // Check if this UID is already mapped to a DIFFERENT event
+            $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$uid]);
+            $existingEventID = $statement->fetchColumn();
+            
+            if ($existingEventID !== false && $existingEventID != $eventID) {
+                $this->log('error', 'UID already mapped to different event, cannot create duplicate mapping', [
+                    'uid' => substr($uid, 0, 30),
+                    'requestedEventID' => $eventID,
+                    'existingEventID' => $existingEventID,
+                    'reason' => 'uid_already_mapped'
+                ]);
+                return false;
+            }
+            
+            // Check if this eventID is already mapped to a DIFFERENT UID
+            $sql = "SELECT icalUID FROM calendar1_ical_uid_map WHERE eventID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$eventID]);
+            $existingUID = $statement->fetchColumn();
+            
+            if ($existingUID !== false && $existingUID !== $uid) {
+                $this->log('error', 'Event already mapped to different UID, cannot create duplicate mapping', [
+                    'eventID' => $eventID,
+                    'requestedUID' => substr($uid, 0, 30),
+                    'existingUID' => substr($existingUID, 0, 30),
+                    'reason' => 'event_already_mapped'
+                ]);
+                return false;
+            }
+            
+            // Safe to insert/update mapping
             $sql = "INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) 
                     VALUES (?, ?, ?, ?) 
-                    ON DUPLICATE KEY UPDATE eventID = VALUES(eventID), lastUpdated = VALUES(lastUpdated)";
+                    ON DUPLICATE KEY UPDATE lastUpdated = VALUES(lastUpdated), importID = VALUES(importID)";
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $uid, $this->importID, TIME_NOW]);
             
-            $this->log('debug', 'UID mapping saved', [
+            $this->log('debug', 'UID mapping saved successfully', [
                 'eventID' => $eventID,
-                'uid' => substr($uid, 0, 30)
+                'uid' => substr($uid, 0, 30),
+                'action' => $existingEventID !== false ? 'updated' : 'created'
             ]);
+            
+            return true;
         } catch (\Exception $e) {
             $this->log('error', 'Failed to save UID mapping: ' . $e->getMessage(), [
                 'eventID' => $eventID,
-                'uid' => substr($uid, 0, 30)
+                'uid' => substr($uid, 0, 30),
+                'exception' => get_class($e),
+                'trace' => substr($e->getTraceAsString(), 0, 300)
             ]);
+            return false;
         }
     }
     
     /**
-     * Create new event from iCal data.
+     * Create new event from iCal data with enhanced duplicate prevention.
+     * 
+     * Additional validation before creating:
+     * - Double-check that UID is not already in mapping table
+     * - Log comprehensive details about the new event being created
+     * 
      * Prefers WoltLab API (CalendarEventAction) with SQL fallback.
      * Uses parameterized queries for SQL injection protection.
      * Implements title fallback logic (summary → location → description → UID).
@@ -792,6 +898,23 @@ class ICalImportCronjob extends AbstractCronjob
     protected function createEvent($event, $categoryID)
     {
         try {
+            // CRITICAL: Final check before creating - ensure UID is not already mapped
+            // This prevents race conditions and duplicate creation
+            $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$event['uid']]);
+            $existingEventID = $statement->fetchColumn();
+            
+            if ($existingEventID !== false) {
+                $this->log('error', 'Race condition detected: UID already mapped, aborting create', [
+                    'uid' => substr($event['uid'], 0, 30),
+                    'existingEventID' => $existingEventID,
+                    'reason' => 'race_condition_prevented'
+                ]);
+                $this->skippedCount++;
+                return;
+            }
+            
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
             // Ensure event always has a title (fallback to location, description, or UID)
@@ -801,6 +924,14 @@ class ICalImportCronjob extends AbstractCronjob
             // By default, registration closes when the event starts
             // This can be configured to close earlier if needed
             $participationEndTime = $this->calculateParticipationEndTime($event['dtstart']);
+            
+            $this->log('info', 'Creating new event', [
+                'uid' => substr($event['uid'], 0, 30),
+                'title' => substr($eventTitle, 0, 50),
+                'startTime' => date('Y-m-d H:i:s', $event['dtstart']),
+                'location' => substr($event['location'] ?? '', 0, 30),
+                'categoryID' => $categoryID
+            ]);
             
             // Try WoltLab API first (for Event-Thread support)
             if (class_exists('calendar\data\event\CalendarEventAction')) {
@@ -833,14 +964,25 @@ class ICalImportCronjob extends AbstractCronjob
                     ]);
                     $result = $action->executeAction();
                     $eventID = $result['returnValues']->eventID;
-                    $this->saveUidMapping($eventID, $event['uid']);
-                    $this->log('debug', "Event erstellt via API: {$eventTitle}", [
-                        'eventID' => $eventID,
-                        'uid' => substr($event['uid'], 0, 30)
-                    ]);
+                    
+                    // Save UID mapping with validation
+                    if ($this->saveUidMapping($eventID, $event['uid'])) {
+                        $this->log('info', 'Event created successfully via API', [
+                            'eventID' => $eventID,
+                            'uid' => substr($event['uid'], 0, 30),
+                            'title' => substr($eventTitle, 0, 50)
+                        ]);
+                    } else {
+                        $this->log('error', 'Event created but UID mapping failed', [
+                            'eventID' => $eventID,
+                            'uid' => substr($event['uid'], 0, 30)
+                        ]);
+                    }
                     return;
                 } catch (\Exception $apiEx) {
-                    $this->log('warning', "API Fallback aktiviert: " . $apiEx->getMessage());
+                    $this->log('warning', 'API create failed, falling back to SQL', [
+                        'error' => $apiEx->getMessage()
+                    ]);
                 }
             }
             
@@ -880,23 +1022,40 @@ class ICalImportCronjob extends AbstractCronjob
                 $event['allday'] ? 1 : 0
             ]);
             
-            $this->saveUidMapping($eventID, $event['uid']);
+            // Save UID mapping with validation
+            if ($this->saveUidMapping($eventID, $event['uid'])) {
+                $this->log('info', 'Event created successfully via SQL', [
+                    'eventID' => $eventID,
+                    'uid' => substr($event['uid'], 0, 30),
+                    'title' => substr($eventTitle, 0, 50)
+                ]);
+            } else {
+                $this->log('error', 'Event created but UID mapping failed', [
+                    'eventID' => $eventID,
+                    'uid' => substr($event['uid'], 0, 30)
+                ]);
+            }
             
-            $this->log('debug', "Event erstellt via SQL: {$eventTitle}", [
-                'eventID' => $eventID,
-                'uid' => substr($event['uid'], 0, 30)
-            ]);
         } catch (\Exception $e) {
-            $this->log('error', "Fehler beim Erstellen: {$eventTitle} - " . $e->getMessage(), [
+            $this->log('error', 'Failed to create event', [
                 'uid' => substr($event['uid'] ?? 'unknown', 0, 30),
-                'exception' => get_class($e)
+                'title' => substr($this->getEventTitle($event), 0, 50),
+                'error' => $e->getMessage(),
+                'exception' => get_class($e),
+                'trace' => substr($e->getTraceAsString(), 0, 500)
             ]);
             $this->skippedCount++;
         }
     }
     
     /**
-     * Update existing event with iCal data.
+     * Update existing event with iCal data with enhanced validation.
+     * 
+     * Additional validation:
+     * - Verify eventID exists before updating
+     * - Verify UID mapping is consistent
+     * - Log comprehensive details about the update
+     * 
      * Prefers WoltLab API (CalendarEventAction) with SQL fallback.
      * Uses parameterized queries for SQL injection protection.
      * Implements title fallback logic (summary → location → description → UID).
@@ -908,6 +1067,22 @@ class ICalImportCronjob extends AbstractCronjob
     protected function updateEvent($eventID, $event, $categoryID)
     {
         try {
+            // Validate event exists
+            $sql = "SELECT eventID, subject FROM calendar1_event WHERE eventID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$eventID]);
+            $existingEvent = $statement->fetchArray();
+            
+            if (!$existingEvent) {
+                $this->log('error', 'Cannot update: event does not exist', [
+                    'eventID' => $eventID,
+                    'uid' => substr($event['uid'], 0, 30),
+                    'reason' => 'event_not_found'
+                ]);
+                $this->skippedCount++;
+                return;
+            }
+            
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
             // Ensure event always has a title (fallback to location, description, or UID)
@@ -915,6 +1090,14 @@ class ICalImportCronjob extends AbstractCronjob
             
             // Calculate participation end time (registration deadline)
             $participationEndTime = $this->calculateParticipationEndTime($event['dtstart']);
+            
+            $this->log('info', 'Updating existing event', [
+                'eventID' => $eventID,
+                'uid' => substr($event['uid'], 0, 30),
+                'oldTitle' => substr($existingEvent['subject'], 0, 50),
+                'newTitle' => substr($eventTitle, 0, 50),
+                'startTime' => date('Y-m-d H:i:s', $event['dtstart'])
+            ]);
             
             // Try WoltLab API first
             if (class_exists('calendar\data\event\CalendarEvent')) {
@@ -945,18 +1128,22 @@ class ICalImportCronjob extends AbstractCronjob
                         ]);
                         $action->executeAction();
                         
-                        // Parameterized query - SQL injection safe
+                        // Update UID mapping timestamp
                         $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
                         WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $event['uid']]);
                         
-                        $this->log('debug', "Event aktualisiert via API: {$eventTitle}", [
+                        $this->log('info', 'Event updated successfully via API', [
                             'eventID' => $eventID,
-                            'uid' => substr($event['uid'], 0, 30)
+                            'uid' => substr($event['uid'], 0, 30),
+                            'title' => substr($eventTitle, 0, 50)
                         ]);
                         return;
                     }
                 } catch (\Exception $apiEx) {
-                    $this->log('warning', "API Update-Fallback aktiviert: " . $apiEx->getMessage());
+                    $this->log('warning', 'API update failed, falling back to SQL', [
+                        'eventID' => $eventID,
+                        'error' => $apiEx->getMessage()
+                    ]);
                 }
             }
             
@@ -993,19 +1180,22 @@ class ICalImportCronjob extends AbstractCronjob
                 $eventID
             ]);
             
-            // Parameterized query - SQL injection safe
+            // Update UID mapping timestamp
             $sql = "UPDATE calendar1_ical_uid_map SET lastUpdated = ? WHERE icalUID = ?";
             WCF::getDB()->prepareStatement($sql)->execute([TIME_NOW, $event['uid']]);
             
-            $this->log('debug', "Event aktualisiert via SQL: {$eventTitle}", [
+            $this->log('info', 'Event updated successfully via SQL', [
                 'eventID' => $eventID,
-                'uid' => substr($event['uid'], 0, 30)
+                'uid' => substr($event['uid'], 0, 30),
+                'title' => substr($eventTitle, 0, 50)
             ]);
         } catch (\Exception $e) {
-            $this->log('error', "Update-Fehler: " . $e->getMessage(), [
+            $this->log('error', 'Failed to update event', [
                 'eventID' => $eventID,
                 'uid' => substr($event['uid'] ?? 'unknown', 0, 30),
-                'exception' => get_class($e)
+                'error' => $e->getMessage(),
+                'exception' => get_class($e),
+                'trace' => substr($e->getTraceAsString(), 0, 500)
             ]);
         }
     }
