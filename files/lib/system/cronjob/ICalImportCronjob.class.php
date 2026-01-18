@@ -487,7 +487,7 @@ class ICalImportCronjob extends AbstractCronjob
     
     protected function importEvent($event, $categoryID)
     {
-        $existingEventID = $this->findExistingEvent($event['uid']);
+        $existingEventID = $this->findExistingEvent($event['uid'], $event);
         if ($existingEventID) {
             $this->updateEvent($existingEventID, $event, $categoryID);
             $this->updatedCount++;
@@ -498,17 +498,24 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Find existing event by iCal UID.
-     * Uses UNIQUE constraint on icalUID to prevent duplicates.
-     * Validates that event still exists before returning.
+     * Find existing event by iCal UID with enhanced deduplication.
+     * 
+     * Strategy:
+     * 1. Primary: Match by UID in UID mapping table (UNIQUE constraint prevents duplicates)
+     * 2. Secondary: If no UID match, try to find event by properties (startTime + location/title)
+     *    This handles events imported before UID mapping or when UID changes in ICS feed
+     * 3. If found via properties, create UID mapping for future updates
+     * 
      * Uses parameterized queries for SQL injection protection.
      * 
      * @param string $uid iCal UID
+     * @param array $event Event data for fallback matching
      * @return int|null Event ID if found, null otherwise
      */
-    protected function findExistingEvent($uid)
+    protected function findExistingEvent($uid, $event = [])
     {
         try {
+            // PRIMARY: Try UID mapping first
             // Parameterized query - SQL injection safe
             $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -522,14 +529,14 @@ class ICalImportCronjob extends AbstractCronjob
                 $statement->execute([$row['eventID']]);
                 
                 if ($statement->fetchArray()) {
-                    $this->log('debug', 'Existing event found for UID', [
+                    $this->log('debug', 'Existing event found by UID', [
                         'uid' => substr($uid, 0, 30),
                         'eventID' => $row['eventID']
                     ]);
                     return $row['eventID'];
                 }
                 
-                // Event was deleted, clean up mapping
+                // Event was deleted, clean up orphaned mapping
                 $this->log('warning', 'Orphaned UID mapping found, cleaning up', [
                     'uid' => substr($uid, 0, 30),
                     'eventID' => $row['eventID']
@@ -538,10 +545,113 @@ class ICalImportCronjob extends AbstractCronjob
                 WCF::getDB()->prepareStatement($sql)->execute([$uid]);
             }
             
+            // SECONDARY: Try to find by event properties (for events without UID mapping)
+            // This handles:
+            // - Events imported before UID system was implemented
+            // - ICS feeds that change UIDs when event details change
+            // - Prevents duplicates when re-importing existing events
+            $eventID = $this->findEventByProperties($event);
+            if ($eventID) {
+                // Found existing event without UID mapping - create mapping now
+                $this->log('info', 'Found existing event by properties, creating UID mapping', [
+                    'uid' => substr($uid, 0, 30),
+                    'eventID' => $eventID,
+                    'startTime' => $event['dtstart'] ?? 'unknown'
+                ]);
+                $this->saveUidMapping($eventID, $uid);
+                return $eventID;
+            }
+            
             return null;
         } catch (\Exception $e) {
             $this->log('error', 'Error finding existing event: ' . $e->getMessage(), [
                 'uid' => substr($uid, 0, 30)
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Find event by properties when UID is not found in mapping.
+     * Matches events based on startTime and location/title similarity.
+     * This prevents duplicates for events imported before UID system
+     * or when ICS feed changes UIDs.
+     * 
+     * Uses parameterized queries for SQL injection protection.
+     * 
+     * @param array $event Event data with dtstart, location, summary
+     * @return int|null Event ID if found, null otherwise
+     */
+    protected function findEventByProperties($event)
+    {
+        if (empty($event['dtstart'])) {
+            return null;
+        }
+        
+        try {
+            // Get event title using same fallback logic as import
+            $eventTitle = $this->getEventTitle($event);
+            $location = $event['location'] ?? '';
+            $startTime = $event['dtstart'];
+            
+            // Time window: ±5 minutes to handle slight time differences
+            $timeWindowStart = $startTime - 300;
+            $timeWindowEnd = $startTime + 300;
+            
+            // Strategy 1: Match by exact startTime and location (most reliable for sports events)
+            if (!empty($location)) {
+                $sql = "SELECT e.eventID, e.subject, e.location, ed.startTime
+                        FROM calendar1_event e
+                        JOIN calendar1_event_date ed ON e.eventID = ed.eventID
+                        LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
+                        WHERE ed.startTime BETWEEN ? AND ?
+                        AND e.location = ?
+                        AND m.mapID IS NULL
+                        AND e.categoryID = ?
+                        LIMIT 1";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$timeWindowStart, $timeWindowEnd, $location, $this->categoryID]);
+                $row = $statement->fetchArray();
+                
+                if ($row) {
+                    $this->log('debug', 'Event found by startTime + location', [
+                        'eventID' => $row['eventID'],
+                        'startTime' => $startTime,
+                        'location' => substr($location, 0, 30)
+                    ]);
+                    return $row['eventID'];
+                }
+            }
+            
+            // Strategy 2: Match by startTime and title similarity (fallback)
+            // Use LIKE for partial title matching to handle title changes
+            $titlePattern = '%' . str_replace(['%', '_'], ['\\%', '\\_'], substr($eventTitle, 0, 20)) . '%';
+            $sql = "SELECT e.eventID, e.subject, ed.startTime
+                    FROM calendar1_event e
+                    JOIN calendar1_event_date ed ON e.eventID = ed.eventID
+                    LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
+                    WHERE ed.startTime BETWEEN ? AND ?
+                    AND e.subject LIKE ?
+                    AND m.mapID IS NULL
+                    AND e.categoryID = ?
+                    LIMIT 1";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$timeWindowStart, $timeWindowEnd, $titlePattern, $this->categoryID]);
+            $row = $statement->fetchArray();
+            
+            if ($row) {
+                $this->log('debug', 'Event found by startTime + title similarity', [
+                    'eventID' => $row['eventID'],
+                    'startTime' => $startTime,
+                    'titlePattern' => substr($titlePattern, 0, 30)
+                ]);
+                return $row['eventID'];
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            $this->log('error', 'Error finding event by properties: ' . $e->getMessage(), [
+                'startTime' => $event['dtstart'] ?? 'unknown'
             ]);
             return null;
         }
