@@ -1839,10 +1839,10 @@ class ICalImportCronjob extends AbstractCronjob
     {
         try {
             // Insert mapping (table created in install.sql)
-            // Uses INSERT...ON DUPLICATE KEY UPDATE for MySQL 8.0.20+ compatibility
+            // Uses standard INSERT...ON DUPLICATE KEY UPDATE for compatibility
             $sql = "INSERT INTO calendar1_event_thread_map (eventID, threadID, created) 
-                    VALUES (?, ?, ?) AS new
-                    ON DUPLICATE KEY UPDATE threadID = new.threadID";
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE threadID = VALUES(threadID)";
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $threadID, TIME_NOW]);
             
             $this->log('debug', 'Forum thread mapping stored', [
