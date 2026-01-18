@@ -3,16 +3,21 @@
  * Test script for duplicate event prevention
  * Tests the enhanced validation and logging mechanisms
  * 
- * Usage: Place in WCF root directory and run via browser or CLI
- * Run: php test_duplicate_prevention.php
+ * SECURITY NOTE: This is a diagnostic script. Remove from production after testing.
+ * 
+ * Usage: Place in WCF root directory and run via CLI (recommended) or browser
+ * CLI: php test_duplicate_prevention.php
+ * Web: Access via browser (ensure proper access controls)
  */
 
-// Bootstrap WCF (adjust path as needed)
-if (file_exists(__DIR__ . '/global.php')) {
-    require_once(__DIR__ . '/global.php');
-} else {
-    die("Error: Cannot find WCF global.php. Place this file in WCF root directory.\n");
+// Security: Verify script is in expected location
+$expectedFile = 'global.php';
+if (!file_exists(__DIR__ . '/' . $expectedFile)) {
+    die("Error: This script must be placed in the WCF root directory.\n");
 }
+
+// Bootstrap WCF
+require_once(__DIR__ . '/' . $expectedFile);
 
 use wcf\system\WCF;
 use wcf\system\cronjob\ICalImportCronjob;
@@ -256,28 +261,43 @@ try {
 
 /**
  * Test 7: Run a test import (optional - commented out by default)
+ * 
+ * SECURITY WARNING: This will enable debug logging which may expose sensitive information.
+ * Only enable this in non-production environments.
  */
 echo "<h2>Test 7: Test Import (Manual Trigger)</h2>\n";
-echo "<div class='info'>";
-echo "ℹ️ To run a test import, uncomment the code in this section and reload.<br>\n";
-echo "ℹ️ This will execute the cronjob and test the duplicate prevention logic.<br>\n";
+echo "<div class='warning'>";
+echo "⚠️ <strong>PRODUCTION WARNING</strong>: Debug logging can expose sensitive information.<br>\n";
+echo "Only use this feature in development/staging environments.<br><br>\n";
+echo "To run a test import:<br>\n";
+echo "1. Ensure you are NOT in production<br>\n";
+echo "2. Uncomment the code in this section<br>\n";
+echo "3. Reload this page<br>\n";
 echo "</div>\n";
 
-// Uncomment to run test import:
+// Uncomment to run test import (NON-PRODUCTION ONLY):
 /*
-try {
-    define('CALENDAR_IMPORT_LOG_LEVEL', 'debug'); // Enable debug logging
-    
-    echo "<div class='info'>🔄 Running test import...</div>\n";
-    
-    $cronjob = new ICalImportCronjob();
-    $cronjob->runManually();
-    
-    echo "<div class='success'>✅ Test import completed</div>\n";
-    echo "<div class='info'>Check the logs above and database for results</div>\n";
-    
-} catch (Exception $e) {
-    echo "<div class='error'>❌ Test import failed: " . htmlspecialchars($e->getMessage()) . "</div>\n";
+// Production environment check
+$isProduction = (defined('ENABLE_DEBUG_MODE') && ENABLE_DEBUG_MODE === false) || 
+                (defined('ENABLE_PRODUCTION_MODE') && ENABLE_PRODUCTION_MODE === true);
+
+if ($isProduction) {
+    echo "<div class='error'>❌ Test import disabled in production environment</div>\n";
+} else {
+    try {
+        define('CALENDAR_IMPORT_LOG_LEVEL', 'debug'); // Enable debug logging
+        
+        echo "<div class='info'>🔄 Running test import...</div>\n";
+        
+        $cronjob = new ICalImportCronjob();
+        $cronjob->runManually();
+        
+        echo "<div class='success'>✅ Test import completed</div>\n";
+        echo "<div class='info'>Check the logs above and database for results</div>\n";
+        
+    } catch (Exception $e) {
+        echo "<div class='error'>❌ Test import failed: " . htmlspecialchars($e->getMessage()) . "</div>\n";
+    }
 }
 */
 

@@ -858,9 +858,10 @@ class ICalImportCronjob extends AbstractCronjob
             }
             
             // Safe to insert/update mapping
+            // Note: Using aliases instead of VALUES() for MySQL 8.0.20+ compatibility
             $sql = "INSERT INTO calendar1_ical_uid_map (eventID, icalUID, importID, lastUpdated) 
-                    VALUES (?, ?, ?, ?) 
-                    ON DUPLICATE KEY UPDATE lastUpdated = VALUES(lastUpdated), importID = VALUES(importID)";
+                    VALUES (?, ?, ?, ?) AS new
+                    ON DUPLICATE KEY UPDATE lastUpdated = new.lastUpdated, importID = new.importID";
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $uid, $this->importID, TIME_NOW]);
             
             $this->log('debug', 'UID mapping saved successfully', [
