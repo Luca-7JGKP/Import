@@ -101,6 +101,11 @@ define('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE', 24); // 24 Stunden vor Even
 - `48`: Anmeldung schließt 48 Stunden vor Event-Start
 - `0` oder nicht definiert: Anmeldung schließt zum Event-Start (Standard)
 
+**Hinweise:**
+- Wert muss zwischen 1 und 168 (1 Woche) liegen
+- Wenn der berechnete Anmeldeschluss in der Vergangenheit liegt, wird automatisch der Event-Start verwendet
+- Bei ungültigen Werten wird der Standard verwendet
+
 ---
 
 ## ⚙️ Einrichtung (einmalig)

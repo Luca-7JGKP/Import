@@ -909,9 +909,26 @@ class ICalImportCronjob extends AbstractCronjob
         // Check if custom hours before event start is configured
         if (defined('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE')) {
             $hoursBefore = (int)CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE;
-            if ($hoursBefore > 0) {
-                // Registration closes X hours before event start
-                return $eventStartTime - ($hoursBefore * 3600);
+            
+            // Validate configuration: must be positive and reasonable (max 1 week = 168 hours)
+            if ($hoursBefore > 0 && $hoursBefore <= 168) {
+                $calculatedEndTime = $eventStartTime - ($hoursBefore * 3600);
+                
+                // Ensure participation end time is not in the past
+                if ($calculatedEndTime < TIME_NOW) {
+                    $this->log('warning', 'Participation end time would be in the past, using event start time instead', [
+                        'eventStartTime' => date('Y-m-d H:i:s', $eventStartTime),
+                        'calculatedEndTime' => date('Y-m-d H:i:s', $calculatedEndTime),
+                        'hoursBefore' => $hoursBefore
+                    ]);
+                    return $eventStartTime;
+                }
+                
+                return $calculatedEndTime;
+            } elseif ($hoursBefore > 168) {
+                $this->log('warning', 'CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE exceeds maximum (168 hours), using default', [
+                    'configured' => $hoursBefore
+                ]);
             }
         }
         
