@@ -62,6 +62,18 @@ class ICalImportCronjob extends AbstractCronjob
     const PROPERTY_MATCH_TITLE_LENGTH = 50;
     
     /**
+     * Minimum similarity threshold for fuzzy title matching (0.0 to 1.0)
+     * 0.7 = 70% similarity required to consider titles as matching
+     */
+    const FUZZY_MATCH_SIMILARITY_THRESHOLD = 0.7;
+    
+    /**
+     * Maximum string length for similarity calculation to avoid performance issues
+     * similar_text() has O(n³) complexity, so we limit input length
+     */
+    const MAX_SIMILARITY_STRING_LENGTH = 100;
+    
+    /**
      * Maximum hours before event start for participation deadline (1 week = 168 hours)
      */
     const MAX_PARTICIPATION_HOURS_BEFORE = 168;
@@ -840,6 +852,8 @@ class ICalImportCronjob extends AbstractCronjob
             
             // Strategy 3: Fuzzy title matching (NEW in v4.3.3)
             // Get candidates by time window only, then fuzzy match titles
+            // Note: LIMIT 10 keeps SQL query fast while providing enough candidates for matching
+            // Consider adding index on (categoryID, startTime) for optimal performance
             $sql = "SELECT e.eventID, e.subject, ed.startTime
                     FROM calendar1_event e
                     JOIN calendar1_event_date ed ON e.eventID = ed.eventID
@@ -853,12 +867,18 @@ class ICalImportCronjob extends AbstractCronjob
             
             $bestMatch = null;
             $bestSimilarity = 0.0;
-            $minSimilarityThreshold = 0.7; // 70% similarity required
             
             while ($row = $statement->fetchArray()) {
                 $similarity = $this->calculateStringSimilarity($eventTitle, $row['subject']);
                 
-                if ($similarity > $bestSimilarity && $similarity >= $minSimilarityThreshold) {
+                // Early exit if exact match found
+                if ($similarity >= 1.0) {
+                    $bestMatch = $row;
+                    $bestSimilarity = 1.0;
+                    break;
+                }
+                
+                if ($similarity > $bestSimilarity && $similarity >= self::FUZZY_MATCH_SIMILARITY_THRESHOLD) {
                     $bestSimilarity = $similarity;
                     $bestMatch = $row;
                 }
@@ -912,6 +932,9 @@ class ICalImportCronjob extends AbstractCronjob
      * Calculate similarity between two strings (0.0 to 1.0).
      * Uses similar_text() which is faster than levenshtein for longer strings.
      * 
+     * Performance note: similar_text() has O(n³) complexity, so we limit
+     * input string length to MAX_SIMILARITY_STRING_LENGTH to avoid bottlenecks.
+     * 
      * @param string $str1 First string
      * @param string $str2 Second string
      * @return float Similarity score (0.0 = completely different, 1.0 = identical)
@@ -925,6 +948,14 @@ class ICalImportCronjob extends AbstractCronjob
         // Handle empty strings
         if ($str1 === '' || $str2 === '') {
             return $str1 === $str2 ? 1.0 : 0.0;
+        }
+        
+        // Limit string length to avoid O(n³) performance issues
+        if (mb_strlen($str1, 'UTF-8') > self::MAX_SIMILARITY_STRING_LENGTH) {
+            $str1 = mb_substr($str1, 0, self::MAX_SIMILARITY_STRING_LENGTH, 'UTF-8');
+        }
+        if (mb_strlen($str2, 'UTF-8') > self::MAX_SIMILARITY_STRING_LENGTH) {
+            $str2 = mb_substr($str2, 0, self::MAX_SIMILARITY_STRING_LENGTH, 'UTF-8');
         }
         
         // Use similar_text for similarity calculation

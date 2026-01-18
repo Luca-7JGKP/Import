@@ -127,7 +127,8 @@ class DuplicatePreventionTest
             $matches = $similarity >= 0.7;
             
             $result = ($matches === $shouldMatch) ? '✅' : '❌';
-            echo "$result '$str1' vs '$str2': " . round($similarity * 100, 1) . "% (expected $shouldMatch)\n";
+            $matchStr = $shouldMatch ? 'should match' : 'should not match';
+            echo "$result '$str1' vs '$str2': " . round($similarity * 100, 1) . "% ($matchStr)\n";
             
             if ($matches === $shouldMatch) {
                 $passed++;
@@ -177,7 +178,8 @@ class DuplicatePreventionTest
             
             $timeDiff = abs($baseTime - $testTime) / 60;
             $result = ($matches === $shouldMatch) ? '✅' : '❌';
-            echo "$result $label: " . round($timeDiff, 1) . " min difference (expected $shouldMatch)\n";
+            $matchStr = $shouldMatch ? 'should match' : 'should not match';
+            echo "$result $label: " . round($timeDiff, 1) . " min difference ($matchStr)\n";
             
             if ($matches === $shouldMatch) {
                 $passed++;
