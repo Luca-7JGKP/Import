@@ -36,16 +36,25 @@ use wcf\system\WCF;
  * - Comprehensive logging with decision tracking
  * - Validate event doesn't already have different UID before reusing
  * 
+ * v4.3.3 Critical Duplicate Prevention Fixes:
+ * - Fixed validateEventsForDuplicates to actually deduplicate instead of just log
+ * - Added intra-run duplicate tracking (processedUIDsInCurrentRun)
+ * - Widened property matching time window from ±5 to ±30 minutes
+ * - Added fuzzy title matching (70% similarity threshold) for better matching
+ * - Added import run timestamp tracking
+ * - Enhanced logging for all deduplication decision points
+ * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.3.2
+ * @version 4.3.3
  */
 class ICalImportCronjob extends AbstractCronjob
 {
     /**
-     * Time window in seconds for property-based event matching (±5 minutes)
+     * Time window in seconds for property-based event matching (±30 minutes)
+     * Widened from 5 to 30 minutes to handle time shifts in ICS feeds
      */
-    const PROPERTY_MATCH_TIME_WINDOW = 300;
+    const PROPERTY_MATCH_TIME_WINDOW = 1800;
     
     /**
      * Maximum characters from title to use in LIKE pattern matching
@@ -66,12 +75,18 @@ class ICalImportCronjob extends AbstractCronjob
     protected $eventUsername = 'System';
     protected $categoryID = null;
     protected $timezone = 'Europe/Berlin'; // Default timezone, can be overridden
+    protected $processedUIDsInCurrentRun = []; // Track UIDs processed in current cronjob run to prevent intra-run duplicates
+    protected $importRunTimestamp = null; // Timestamp when this import run started
     
     public function execute($cronjob = null)
     {
         if ($cronjob instanceof Cronjob) {
             parent::execute($cronjob);
         }
+        
+        // Initialize import run timestamp for duplicate prevention within same run
+        $this->importRunTimestamp = TIME_NOW;
+        $this->processedUIDsInCurrentRun = [];
         
         // v4.2: Ensure ALL required tables exist - 100% crash-proof!
         $this->ensureAllTablesExist();
@@ -125,8 +140,9 @@ class ICalImportCronjob extends AbstractCronjob
             $events = $this->parseIcsContent($icsContent);
             $this->log('info', count($events) . ' Events in ICS gefunden');
             
-            // Check all events for updates or duplicates
-            $this->validateEventsForDuplicates($events);
+            // Deduplicate events from ICS file (removes duplicate UIDs within same file)
+            $events = $this->validateEventsForDuplicates($events);
+            $this->log('info', count($events) . ' Events nach Deduplizierung');
             
             foreach ($events as $event) {
                 if (empty($event['uid'])) {
@@ -136,7 +152,23 @@ class ICalImportCronjob extends AbstractCronjob
                     $this->skippedCount++;
                     continue;
                 }
+                
+                // Check if we've already processed this UID in this cronjob run
+                if (isset($this->processedUIDsInCurrentRun[$event['uid']])) {
+                    $this->log('warning', 'Event already processed in this run, skipping', [
+                        'uid' => substr($event['uid'], 0, 30),
+                        'title' => substr($event['summary'] ?? 'N/A', 0, 50),
+                        'reason' => 'already_processed_in_run'
+                    ]);
+                    $this->skippedCount++;
+                    continue;
+                }
+                
+                // Import the event
                 $this->importEvent($event, $this->categoryID);
+                
+                // Mark UID as processed in this run
+                $this->processedUIDsInCurrentRun[$event['uid']] = TIME_NOW;
             }
             
             $this->log('info', "Import: {$this->importedCount} neu, {$this->updatedCount} aktualisiert, {$this->skippedCount} übersprungen");
@@ -261,37 +293,63 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Validate events for potential duplicates before import.
-     * Logs warnings for events that may cause issues.
+     * Validate events for potential duplicates before import and return deduplicated list.
+     * 
+     * CRITICAL FIX: Instead of just logging warnings, this now actively deduplicates
+     * events with the same UID within a single ICS file. Only keeps the first occurrence.
+     * 
+     * This prevents issues where:
+     * - ICS feeds contain the same event multiple times
+     * - Calendar software bugs create duplicate UIDs
+     * - Recurring events are incorrectly exported with same UID
      * 
      * @param array $events Parsed events from ICS
+     * @return array Deduplicated list of events with unique UIDs
      */
     protected function validateEventsForDuplicates(array $events)
     {
-        $uids = [];
-        $duplicateUids = [];
+        $seenUIDs = [];
+        $deduplicatedEvents = [];
+        $duplicateCount = 0;
         
         foreach ($events as $event) {
             if (empty($event['uid'])) {
+                // Event without UID - keep it but will be skipped later
+                $deduplicatedEvents[] = $event;
                 continue;
             }
             
             $uid = $event['uid'];
-            if (isset($uids[$uid])) {
-                $duplicateUids[] = $uid;
-            } else {
-                $uids[$uid] = true;
+            
+            // Check if we've already seen this UID in the current ICS file
+            if (isset($seenUIDs[$uid])) {
+                // Duplicate UID found - skip this event
+                $duplicateCount++;
+                $this->log('warning', 'Duplicate UID in ICS file, skipping duplicate occurrence', [
+                    'uid' => substr($uid, 0, 30),
+                    'title' => substr($event['summary'] ?? 'N/A', 0, 50),
+                    'occurrence' => $duplicateCount,
+                    'reason' => 'duplicate_uid_in_ics'
+                ]);
+                continue;
             }
+            
+            // First occurrence of this UID - keep it
+            $seenUIDs[$uid] = true;
+            $deduplicatedEvents[] = $event;
         }
         
-        if (!empty($duplicateUids)) {
-            $this->log('warning', 'Duplicate UIDs found in ICS file', [
-                'count' => count($duplicateUids),
-                'uids' => implode(', ', array_slice($duplicateUids, 0, 5))
+        if ($duplicateCount > 0) {
+            $this->log('warning', "Removed {$duplicateCount} duplicate events from ICS file", [
+                'originalCount' => count($events),
+                'deduplicatedCount' => count($deduplicatedEvents),
+                'duplicatesRemoved' => $duplicateCount
             ]);
+        } else {
+            $this->log('debug', 'Validated ' . count($events) . ' events, no duplicates found in ICS');
         }
         
-        $this->log('debug', 'Validated ' . count($events) . ' events for duplicates');
+        return $deduplicatedEvents;
     }
     
     protected function loadEventUserById($userID)
@@ -673,7 +731,9 @@ class ICalImportCronjob extends AbstractCronjob
      * This prevents duplicates for events imported before UID system
      * or when ICS feed changes UIDs.
      * 
-     * Enhanced validation:
+     * Enhanced validation (v4.3.3):
+     * - Widened time window to ±30 minutes (from ±5 minutes)
+     * - Added fuzzy title matching for events with similar but not identical titles
      * - Only matches events from the same importID or without importID
      * - Validates that matched event doesn't already have a UID mapping to a different UID
      * - Uses stricter matching criteria to avoid false positives
@@ -711,7 +771,7 @@ class ICalImportCronjob extends AbstractCronjob
             $location = $event['location'] ?? '';
             $startTime = (int)$event['dtstart'];
             
-            // Time window for matching (configurable via class constant)
+            // Time window for matching - widened to ±30 minutes to handle time shifts
             $timeWindowStart = $startTime - self::PROPERTY_MATCH_TIME_WINDOW;
             $timeWindowEnd = $startTime + self::PROPERTY_MATCH_TIME_WINDOW;
             
@@ -750,7 +810,7 @@ class ICalImportCronjob extends AbstractCronjob
             }
             
             // Strategy 2: Match by startTime and title similarity (fallback)
-            // Use LIKE for partial title matching to handle title changes
+            // First try LIKE pattern matching
             $titleForPattern = substr($eventTitle, 0, self::PROPERTY_MATCH_TITLE_LENGTH);
             $titlePattern = $this->escapeLikePattern($titleForPattern);
             
@@ -768,7 +828,7 @@ class ICalImportCronjob extends AbstractCronjob
             $row = $statement->fetchArray();
             
             if ($row) {
-                $this->log('info', 'Event matched by startTime + title similarity', [
+                $this->log('info', 'Event matched by startTime + title similarity (LIKE)', [
                     'eventID' => $row['eventID'],
                     'subject' => substr($row['subject'], 0, 30),
                     'startTime' => date('Y-m-d H:i:s', $row['startTime']),
@@ -776,6 +836,43 @@ class ICalImportCronjob extends AbstractCronjob
                     'matchStrategy' => 'time_title_like'
                 ]);
                 return $row['eventID'];
+            }
+            
+            // Strategy 3: Fuzzy title matching (NEW in v4.3.3)
+            // Get candidates by time window only, then fuzzy match titles
+            $sql = "SELECT e.eventID, e.subject, ed.startTime
+                    FROM calendar1_event e
+                    JOIN calendar1_event_date ed ON e.eventID = ed.eventID
+                    LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
+                    WHERE ed.startTime BETWEEN ? AND ?
+                    AND m.mapID IS NULL
+                    AND e.categoryID = ?
+                    LIMIT 10";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$timeWindowStart, $timeWindowEnd, $this->categoryID]);
+            
+            $bestMatch = null;
+            $bestSimilarity = 0.0;
+            $minSimilarityThreshold = 0.7; // 70% similarity required
+            
+            while ($row = $statement->fetchArray()) {
+                $similarity = $this->calculateStringSimilarity($eventTitle, $row['subject']);
+                
+                if ($similarity > $bestSimilarity && $similarity >= $minSimilarityThreshold) {
+                    $bestSimilarity = $similarity;
+                    $bestMatch = $row;
+                }
+            }
+            
+            if ($bestMatch) {
+                $this->log('info', 'Event matched by startTime + fuzzy title matching', [
+                    'eventID' => $bestMatch['eventID'],
+                    'subject' => substr($bestMatch['subject'], 0, 30),
+                    'startTime' => date('Y-m-d H:i:s', $bestMatch['startTime']),
+                    'similarity' => round($bestSimilarity * 100, 1) . '%',
+                    'matchStrategy' => 'time_title_fuzzy'
+                ]);
+                return $bestMatch['eventID'];
             }
             
             $this->log('debug', 'No property match found', [
@@ -809,6 +906,32 @@ class ICalImportCronjob extends AbstractCronjob
         // Escape backslashes first, then LIKE wildcards
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $input);
         return $wrapWildcard ? '%' . $escaped . '%' : $escaped;
+    }
+    
+    /**
+     * Calculate similarity between two strings (0.0 to 1.0).
+     * Uses similar_text() which is faster than levenshtein for longer strings.
+     * 
+     * @param string $str1 First string
+     * @param string $str2 Second string
+     * @return float Similarity score (0.0 = completely different, 1.0 = identical)
+     */
+    protected function calculateStringSimilarity($str1, $str2)
+    {
+        // Normalize strings: lowercase and trim
+        $str1 = mb_strtolower(trim($str1), 'UTF-8');
+        $str2 = mb_strtolower(trim($str2), 'UTF-8');
+        
+        // Handle empty strings
+        if ($str1 === '' || $str2 === '') {
+            return $str1 === $str2 ? 1.0 : 0.0;
+        }
+        
+        // Use similar_text for similarity calculation
+        $percent = 0.0;
+        similar_text($str1, $str2, $percent);
+        
+        return $percent / 100.0;
     }
     
     /**
@@ -1323,7 +1446,7 @@ class ICalImportCronjob extends AbstractCronjob
         
         if ($levels[$level] <= $currentLevelNum) {
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
-            $logMessage = "[Calendar Import v4.3.1] [{$level}] {$message}{$contextStr}";
+            $logMessage = "[Calendar Import v4.3.3] [{$level}] {$message}{$contextStr}";
             error_log($logMessage);
             
             // Also log to database for persistent debugging
