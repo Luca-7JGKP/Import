@@ -35,6 +35,16 @@ use wcf\system\WCF;
  */
 class ICalImportCronjob extends AbstractCronjob
 {
+    /**
+     * Time window in seconds for property-based event matching (±5 minutes)
+     */
+    const PROPERTY_MATCH_TIME_WINDOW = 300;
+    
+    /**
+     * Maximum characters from title to use in LIKE pattern matching
+     */
+    const PROPERTY_MATCH_TITLE_LENGTH = 50;
+    
     protected $importedCount = 0;
     protected $updatedCount = 0;
     protected $skippedCount = 0;
@@ -405,7 +415,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected function fetchIcsContent($url)
     {
         $context = stream_context_create([
-            'http' => ['timeout' => 30, 'user_agent' => 'WoltLab Calendar Import/4.2.0'],
+            'http' => ['timeout' => 30, 'user_agent' => 'WoltLab Calendar Import/4.3.0'],
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
         $content = @file_get_contents($url, false, $context);
@@ -603,9 +613,9 @@ class ICalImportCronjob extends AbstractCronjob
             $location = $event['location'] ?? '';
             $startTime = (int)$event['dtstart'];
             
-            // Time window: ±5 minutes to handle slight time differences
-            $timeWindowStart = $startTime - 300;
-            $timeWindowEnd = $startTime + 300;
+            // Time window for matching (configurable via class constant)
+            $timeWindowStart = $startTime - self::PROPERTY_MATCH_TIME_WINDOW;
+            $timeWindowEnd = $startTime + self::PROPERTY_MATCH_TIME_WINDOW;
             
             // Strategy 1: Match by exact startTime and location (most reliable for sports events)
             if (!empty($location)) {
@@ -635,7 +645,7 @@ class ICalImportCronjob extends AbstractCronjob
             // Strategy 2: Match by startTime and title similarity (fallback)
             // Use LIKE for partial title matching to handle title changes
             // Properly escape backslashes AND LIKE wildcards for SQL injection protection
-            $titleForPattern = substr($eventTitle, 0, 20);
+            $titleForPattern = substr($eventTitle, 0, self::PROPERTY_MATCH_TITLE_LENGTH);
             $titlePattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $titleForPattern) . '%';
             
             $sql = "SELECT e.eventID, e.subject, ed.startTime
@@ -985,7 +995,7 @@ class ICalImportCronjob extends AbstractCronjob
         
         if ($levels[$level] <= $currentLevelNum) {
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
-            $logMessage = "[Calendar Import v4.2] [{$level}] {$message}{$contextStr}";
+            $logMessage = "[Calendar Import v4.3] [{$level}] {$message}{$contextStr}";
             error_log($logMessage);
             
             // Also log to database for persistent debugging
