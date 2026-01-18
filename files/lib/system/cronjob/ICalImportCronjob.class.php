@@ -990,8 +990,10 @@ class ICalImportCronjob extends AbstractCronjob
             
             $bestMatch = null;
             $bestSimilarity = 0.0;
+            $candidateCount = 0;
             
             while ($row = $statement->fetchArray()) {
+                $candidateCount++;
                 $similarity = $this->calculateStringSimilarity($eventTitle, $row['subject']);
                 
                 // Early exit if exact match found
@@ -1022,7 +1024,7 @@ class ICalImportCronjob extends AbstractCronjob
                 $this->log('debug', 'Strategy 3 (fuzzy title) found no match above threshold', [
                     'sessionID' => $this->importSessionID,
                     'threshold' => (self::FUZZY_MATCH_SIMILARITY_THRESHOLD * 100) . '%',
-                    'candidatesChecked' => $statement->rowCount()
+                    'candidatesChecked' => $candidateCount
                 ]);
             }
             
@@ -1635,8 +1637,8 @@ class ICalImportCronjob extends AbstractCronjob
         
         if ($levels[$level] <= $currentLevelNum) {
             // Add sessionID to context if available and not already present
-            if ($this->importSessionID && !isset($context['sessionID'])) {
-                $context['_sessionID'] = $this->importSessionID;
+            if ($this->importSessionID && !isset($context['sessionID']) && !isset($context['_sessionID'])) {
+                $context['sessionID'] = $this->importSessionID;
             }
             
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';

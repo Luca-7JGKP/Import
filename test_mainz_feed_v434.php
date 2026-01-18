@@ -9,6 +9,9 @@
  * 3. Validates no duplicates are created
  * 4. Generates detailed report of findings
  * 
+ * SECURITY NOTE: The feed URL uses HTTP (not HTTPS) as provided by the feed publisher.
+ * This test script is for debugging purposes only.
+ * 
  * Usage: php test_mainz_feed_v434.php
  */
 
@@ -16,6 +19,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Configuration
+// NOTE: Feed publisher uses HTTP, not HTTPS
 define('MAINZ_FEED_URL', 'http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-e04b249b.ics');
 define('TEST_CATEGORY_ID', 1); // Default category for testing
 define('TEST_USER_ID', 1); // Default user for testing
@@ -317,13 +321,9 @@ class Mainz05FeedTester
             'http' => [
                 'timeout' => 30,
                 'user_agent' => 'WoltLab Calendar Import Test/4.3.4'
-            ],
-            'ssl' => [
-                // SSL verification enabled by default
-                // For test environments with self-signed certs, disable via:
-                // 'verify_peer' => false,
-                // 'verify_peer_name' => false
             ]
+            // SSL verification enabled by default (when using HTTPS)
+            // Note: This test feed uses HTTP, so SSL verification is not applicable
         ]);
         
         return @file_get_contents($url, false, $context);
