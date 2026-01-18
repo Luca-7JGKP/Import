@@ -1,5 +1,5 @@
 -- Datenbank-Schema für Kalender Import Plugin
--- Version: 2.0.0
+-- Version: 4.3.5
 -- Autor: Luca Berwind
 -- Kompatibel mit: com.woltlab.calendar 6.1.x
 
@@ -46,4 +46,14 @@ CREATE TABLE IF NOT EXISTS calendar1_ical_uid_map (
     UNIQUE KEY icalUID (icalUID),
     KEY eventID (eventID),
     KEY importID (importID)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Tabelle für Event-zu-Forum-Thread-Mapping (v4.3.5)
+-- Speichert die Verknüpfung zwischen Calendar-Events und WBB-Forum-Threads
+CREATE TABLE IF NOT EXISTS calendar1_event_thread_map (
+    eventID INT(10) NOT NULL,
+    threadID INT(10) NOT NULL,
+    created INT(10) NOT NULL DEFAULT 0,
+    PRIMARY KEY (eventID),
+    KEY threadID (threadID)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

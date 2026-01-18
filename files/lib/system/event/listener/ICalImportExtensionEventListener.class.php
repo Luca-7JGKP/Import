@@ -171,12 +171,16 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
      * Markiert ein Event als gelesen für ALLE aktiven Benutzer.
      * Wird verwendet für abgelaufene Events.
      * Uses parameterized query with INSERT...SELECT for efficiency.
+     * Adds proper timestamp tracking for each read operation.
      * 
      * @param int $eventID Event ID to mark as read
      */
     protected function markEventAsReadForAllUsers($eventID) {
         $objectTypeID = $this->getCalendarEventObjectTypeID();
         if (!$objectTypeID) {
+            $this->log('Cannot mark event as read: object type not found', [
+                'eventID' => $eventID
+            ]);
             return;
         }
         
@@ -190,14 +194,22 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
             $statement = WCF::getDB()->prepareStatement($sql);
             $statement->execute([$objectTypeID, $eventID, TIME_NOW]);
             
+            $affectedRows = $statement->getAffectedRows();
+            
             $this->log('Marked event as read for all users', [
                 'eventID' => $eventID,
-                'affectedRows' => $statement->getAffectedRows()
+                'objectTypeID' => $objectTypeID,
+                'affectedRows' => $affectedRows,
+                'timestamp' => date('Y-m-d H:i:s', TIME_NOW)
             ]);
+            
+            // Also update legacy table if it exists for backwards compatibility
+            $this->updateLegacyReadStatus($eventID, true);
         } catch (\Exception $e) {
             $this->log('Failed to mark event as read', [
                 'error' => $e->getMessage(),
-                'eventID' => $eventID
+                'eventID' => $eventID,
+                'trace' => substr($e->getTraceAsString(), 0, 200)
             ]);
         }
     }
@@ -206,6 +218,7 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
      * Markiert ein Event als ungelesen für ALLE Benutzer.
      * Löscht alle visit-Einträge für dieses Event.
      * Uses parameterized queries for SQL injection protection.
+     * Ensures proper cleanup of all read status records.
      * 
      * @param int $eventID Event ID to mark as unread
      */
@@ -218,24 +231,56 @@ class ICalImportExtensionEventListener implements IParameterizedEventListener {
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute([$objectTypeID, $eventID]);
                 
+                $deletedRows = $statement->getAffectedRows();
+                
                 $this->log('Marked event as unread for all users', [
                     'eventID' => $eventID,
-                    'deletedRows' => $statement->getAffectedRows()
+                    'objectTypeID' => $objectTypeID,
+                    'deletedRows' => $deletedRows,
+                    'timestamp' => date('Y-m-d H:i:s', TIME_NOW)
+                ]);
+            } else {
+                $this->log('Cannot mark event as unread: object type not found', [
+                    'eventID' => $eventID
                 ]);
             }
         } catch (\Exception $e) {
             $this->log('Failed to mark event as unread', [
                 'error' => $e->getMessage(),
-                'eventID' => $eventID
+                'eventID' => $eventID,
+                'trace' => substr($e->getTraceAsString(), 0, 200)
             ]);
         }
         
         // Legacy-Tabelle auch bereinigen falls vorhanden
+        $this->updateLegacyReadStatus($eventID, false);
+    }
+    
+    /**
+     * Update legacy read status table for backwards compatibility.
+     * Silently fails if table doesn't exist.
+     * 
+     * @param int $eventID Event ID
+     * @param bool $isRead Whether event is read or unread
+     */
+    protected function updateLegacyReadStatus($eventID, $isRead)
+    {
         try {
-            // Parameterized query - SQL injection safe
-            $sql = "DELETE FROM wcf".WCF_N."_calendar_event_visit WHERE eventID = ?";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$eventID]);
+            if ($isRead) {
+                // Mark as read in legacy table
+                $sql = "INSERT IGNORE INTO wcf".WCF_N."_calendar_event_read_status 
+                        (eventID, userID, isRead, lastVisitTime)
+                        SELECT ?, userID, 1, ?
+                        FROM wcf".WCF_N."_user
+                        WHERE banned = 0 AND activationCode = 0";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$eventID, TIME_NOW]);
+            } else {
+                // Mark as unread (delete entries)
+                $sql = "DELETE FROM wcf".WCF_N."_calendar_event_read_status WHERE eventID = ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$eventID]);
+            }
         } catch (\Exception $e) {
             // Silently fail if table doesn't exist
         }

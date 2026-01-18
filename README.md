@@ -27,15 +27,16 @@ Importiert **automatisch** Kalender-Events aus ICS-Dateien (z.B. Mainz 05 Spielp
 | 🔄 **Intelligente Deduplication** | Verhindert Duplikate durch UID-Mapping + Property-basierte Erkennung |
 | 🔁 **Event Updates** | Aktualisiert existierende Events (auch abgelaufene) statt neue zu erstellen |
 | 🎯 **Auto-Migration** | Findet und verknüpft Events ohne UID-Mapping automatisch |
-| 📝 **Event-Threads** | Automatisch Forum-Threads via WoltLab API erstellen |
+| 💬 **Forum-Topics** | Automatische Erstellung von Forum-Themen für Events (v4.3.5) |
 | 🏷️ **Titel-Fallback** | Events erhalten immer einen Titel (Summary → Location → Description → UID) |
 | 👥 **Teilnahme** | 99 Begleiter, öffentlich, änderbar |
-| 🔔 **Gelesen/Ungelesen** | Neue Events = ungelesen |
-| ⏰ **Cronjob** | Alle 30 Minuten automatischer Import |
+| ⏰ **Anmeldeschluss** | Konfigurierbar 1-168 Stunden vor Event, validiert gegen Vergangenheit (v4.3.5) |
+| 🔔 **Gelesen/Ungelesen** | Intelligentes Tracking mit WoltLab's tracked_visit + Legacy-Support (v4.3.5) |
+| 🔄 **Cronjob** | Alle 30 Minuten automatischer Import |
 | 🌍 **Konfigurierbare Timezone** | Unterstützt alle PHP-Timezones (default: Europe/Berlin) |
 | 🔒 **SQL Injection Schutz** | Alle Queries nutzen parameterized statements |
-| 📊 **Enhanced Logging** | Strukturiertes Logging mit Context-Daten |
-| 🛡️ **WoltLab API Integration** | Nutzt CalendarEventAction mit SQL-Fallback |
+| 📊 **Enhanced Logging** | Strukturiertes Logging mit Context-Daten und Session-Tracking |
+| 🛡️ **WoltLab API Integration** | Nutzt CalendarEventAction + ThreadAction mit SQL-Fallback |
 
 ---
 
@@ -105,8 +106,41 @@ define('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE', 24); // 24 Stunden vor Even
 
 **Hinweise:**
 - Wert muss zwischen 1 und 168 (1 Woche) liegen
-- Wenn der berechnete Anmeldeschluss in der Vergangenheit liegt, wird automatisch der Event-Start verwendet
+- Wenn der berechnete Anmeldeschluss in der Vergangenheit liegt, wird automatisch die aktuelle Zeit verwendet
 - Bei ungültigen Werten wird der Standard verwendet
+- Deadline wird nie nach dem Event-Start gesetzt
+
+**Validierungen (v4.3.5):**
+- ✅ Deadline nie in der Vergangenheit
+- ✅ Deadline nie nach Event-Start
+- ✅ Automatische Anpassung bei vergangenen Events
+- ✅ Detailliertes Logging für alle Berechnungen
+
+### Forum-Themen für Events (v4.3.5)
+
+Das Plugin kann automatisch Forum-Themen für jedes importierte Event erstellen.
+
+**In `config.inc.php` einfügen:**
+```php
+// Forum-Themen automatisch erstellen
+define('CALENDAR_IMPORT_CREATE_THREADS', true); // Standard: true
+
+// Ziel-Forum (Board-ID) für Event-Themen
+define('CALENDAR_IMPORT_BOARD_ID', 1); // Board-ID aus ACP
+```
+
+**Features:**
+- 🎯 **Automatische Erstellung**: Jedes neue Event erhält ein Forum-Thema
+- 📝 **Format**: Titel = "Event: [EventTitle]"
+- 📅 **Details**: Automatische Beitragserstellung mit Start, Ende, Ort
+- 🔗 **Mapping**: Verknüpfung zwischen Event und Thread gespeichert
+- 📊 **Logging**: Umfassende Logs für Erfolg/Fehler
+
+**Hinweise:**
+- Board-ID muss gültig sein (> 0)
+- WBB (Forum) muss installiert sein
+- Bei Board-ID = 0 wird keine Themenerstellung durchgeführt
+- Bei Fehlern wird Event trotzdem importiert (keine Blockierung)
 
 ---
 
@@ -311,8 +345,11 @@ LIMIT 10;
 |---------|-------|
 | `calendar1_event_import` | Import-Konfiguration (URL, Kategorie) |
 | `calendar1_ical_uid_map` | UID ↔ eventID Mapping |
+| `calendar1_event_thread_map` | Event ↔ Forum Thread Mapping (v4.3.5) |
 | `calendar1_event` | Die Events selbst |
 | `calendar1_event_date` | Start/End-Zeiten |
+| `wcf1_tracked_visit` | Read/Unread Status (WoltLab Standard) |
+| `wcf1_calendar_event_read_status` | Legacy Read Status (Fallback) |
 
 ---
 
@@ -328,6 +365,37 @@ LIMIT 10;
 ---
 
 ## 📝 Changelog
+
+### v4.3.5 (2026-01-18) - Registration Deadline, Forum Topics & Read/Unread Fixes
+- ✅ **Enhanced Registration Deadline Validation**
+  - Added validation to prevent deadlines in the past (uses TIME_NOW as minimum)
+  - Added validation to prevent deadlines after event start time
+  - Enhanced logging with timestamps for all deadline calculations
+  - Automatic adjustment for past events to current time
+  - Detailed context logging for debugging deadline issues
+- 🎯 **Forum Topic Creation Implementation**
+  - NEW: Automatic forum topic creation for each imported event
+  - Topic title format: "Event: [EventTitle]"
+  - Automatic post creation with event details (date, time, location, description)
+  - Configuration via CALENDAR_IMPORT_CREATE_THREADS and CALENDAR_IMPORT_BOARD_ID
+  - WBB API integration with comprehensive error handling
+  - Event-to-thread mapping table (calendar1_event_thread_map)
+  - Detailed logging for topic creation success/failure
+  - Graceful fallback when forum integration is disabled
+- 📖 **Enhanced Read/Unread Logic**
+  - Improved timestamp tracking for read operations (visitTime)
+  - Enhanced logging with context for all read/unread operations
+  - Added legacy table support for backwards compatibility
+  - Better error handling with detailed trace information
+  - Validation of object type IDs before operations
+  - Comprehensive logging in MarkPastEventsReadCronjob
+  - Tracks event count, user count, and operation timestamps
+- 🧪 **Testing & Quality**
+  - Created comprehensive test suite (test_three_issues_v435.php)
+  - All 14 test cases pass (6 deadline, 4 forum, 4 read/unread)
+  - No PHP syntax errors in all modified files
+  - WoltLab 6.1 API compatibility verified
+  - Enhanced documentation for all new features
 
 ### v4.3.4 (2026-01-18) - Deep Debugging & Traceability Enhancements
 - 🔍 **Import Session Tracking**
