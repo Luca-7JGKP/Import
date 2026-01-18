@@ -402,7 +402,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected function fetchIcsContent($url)
     {
         $context = stream_context_create([
-            'http' => ['timeout' => 30, 'user_agent' => 'WoltLab Calendar Import/4.2.0'],
+            'http' => ['timeout' => 30, 'user_agent' => 'WoltLab Calendar Import/4.2.1'],
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
         $content = @file_get_contents($url, false, $context);
