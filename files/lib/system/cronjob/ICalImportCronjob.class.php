@@ -990,6 +990,8 @@ class ICalImportCronjob extends AbstractCronjob
             
             $bestMatch = null;
             $bestSimilarity = 0.0;
+            // Manual counter needed for logging - tracks how many candidates were evaluated
+            // (Cannot use getAffectedRows() as this is a SELECT query)
             $candidateCount = 0;
             
             while ($row = $statement->fetchArray()) {
@@ -1637,6 +1639,8 @@ class ICalImportCronjob extends AbstractCronjob
         
         if ($levels[$level] <= $currentLevelNum) {
             // Add sessionID to context if available and not already present
+            // Check both 'sessionID' and '_sessionID' to prevent duplicate keys
+            // Some callers may provide sessionID directly, others rely on auto-add
             if ($this->importSessionID && !isset($context['sessionID']) && !isset($context['_sessionID'])) {
                 $context['sessionID'] = $this->importSessionID;
             }

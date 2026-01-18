@@ -19,7 +19,11 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Configuration
-// NOTE: Feed publisher uses HTTP, not HTTPS
+// SECURITY NOTE: The feed URL uses HTTP (not HTTPS) as provided by the feed publisher.
+// This is the official Mainz 05 feed URL and cannot be changed to HTTPS.
+// This test script is for debugging purposes only and should not be used in production
+// to fetch untrusted feeds. In production, the main cronjob handles feed fetching
+// with appropriate security measures.
 define('MAINZ_FEED_URL', 'http://i.cal.to/ical/1365/mainz05/spielplan/81d83bec.6bb2a14d-e04b249b.ics');
 define('TEST_CATEGORY_ID', 1); // Default category for testing
 define('TEST_USER_ID', 1); // Default user for testing
