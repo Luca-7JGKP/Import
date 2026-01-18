@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.3.0
+# 📅 Kalender iCal Import Plugin v4.3.1
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.3.0 |
+| **Version** | 4.3.1 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -87,6 +87,26 @@ define('CALENDAR_IMPORT_LOG_LEVEL', 'debug');
 - `warning`: Fehler + Warnungen (z.B. API Fallback)
 - `info`: Standard-Level mit Import-Statistiken
 - `debug`: Detaillierte Debug-Ausgaben für jeden Event
+
+### Anmeldeschluss konfigurieren (optional)
+
+Standardmäßig schließt die Anmeldung genau zum Event-Start. Um die Anmeldung früher zu schließen:
+
+**In `config.inc.php` einfügen:**
+```php
+// Anmeldeschluss X Stunden vor Event-Start
+define('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE', 24); // 24 Stunden vor Event
+```
+
+**Beispiele:**
+- `24`: Anmeldung schließt 24 Stunden vor Event-Start
+- `48`: Anmeldung schließt 48 Stunden vor Event-Start
+- `0` oder nicht definiert: Anmeldung schließt zum Event-Start (Standard)
+
+**Hinweise:**
+- Wert muss zwischen 1 und 168 (1 Woche) liegen
+- Wenn der berechnete Anmeldeschluss in der Vergangenheit liegt, wird automatisch der Event-Start verwendet
+- Bei ungültigen Werten wird der Standard verwendet
 
 ---
 
@@ -294,6 +314,21 @@ LIMIT 10;
 ---
 
 ## 📝 Changelog
+
+### v4.3.1 (2026-01-18) - Timezone & Participation Fixes
+- 🐛 **Fixed Timezone Offset Issue** - Local times now correctly use configured timezone (fixes 1-hour offset)
+  - UTC times (with 'Z') continue to use UTC timezone
+  - Local times (without 'Z') now explicitly use configured timezone instead of system default
+  - All-day events now use configured timezone
+  - Enhanced error handling and logging for date/time parsing
+- ✅ **Configurable Registration Deadline** - New `CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE` option
+  - Default behavior unchanged (closes at event start)
+  - Can be set to close registration 1-168 hours before event
+  - Validates that deadline is not in the past
+- 🐛 **Improved Title Fallback** - Enhanced UID trimming in getEventTitle()
+  - Ensures UID is trimmed before use
+  - Absolute fallback to "Unnamed Event" for null safety
+- 📝 **Documentation Updates** - Added configuration examples for participation deadline
 
 ### v4.3.0 (2026-01-18) - Enhanced Event Deduplication
 - ✅ **Property-Based Deduplication** - Findet Events auch ohne UID-Mapping
