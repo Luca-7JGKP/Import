@@ -1690,10 +1690,20 @@ class ICalImportCronjob extends AbstractCronjob
         
         try {
             // Verify board exists using parameterized query
-            $sql = "SELECT boardID, title FROM wbb" . WCF_N . "_board WHERE boardID = ?";
-            $statement = WCF::getDB()->prepareStatement($sql);
-            $statement->execute([$boardID]);
-            $board = $statement->fetchArray();
+            // Use try-catch to handle cases where WBB is not installed
+            try {
+                $sql = "SELECT boardID, title FROM wbb" . WCF_N . "_board WHERE boardID = ?";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$boardID]);
+                $board = $statement->fetchArray();
+            } catch (\Exception $e) {
+                $this->log('warning', 'WBB board table does not exist - WBB not installed?', [
+                    'eventID' => $eventID,
+                    'boardID' => $boardID,
+                    'error' => $e->getMessage()
+                ]);
+                return null;
+            }
             
             if (!$board) {
                 $this->log('warning', 'Configured board does not exist', [
@@ -1743,23 +1753,26 @@ class ICalImportCronjob extends AbstractCronjob
                         'title' => substr($topicTitle, 0, 50)
                     ]);
                     
-                    // Optionally store the threadID mapping for future reference
+                    // Store the threadID mapping for future reference
                     $this->storeForumThreadMapping($eventID, $threadID);
                     
                     return $threadID;
                 } catch (\Exception $e) {
-                    $this->log('warning', 'WBB API topic creation failed, trying SQL fallback', [
+                    $this->log('error', 'WBB API topic creation failed', [
                         'eventID' => $eventID,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
+                        'trace' => substr($e->getTraceAsString(), 0, 200)
                     ]);
                 }
             }
             
-            // SQL fallback for forum topic creation
-            // Note: This is a simplified approach and may need adjustment based on WBB schema
-            $this->log('info', 'WBB API not available or failed, skipping forum topic creation', [
+            // WBB API not available - forum topic creation requires WBB API
+            // SQL fallback is not implemented due to complexity of WBB's post/thread system
+            // which includes search indexing, activity tracking, and other WBB-specific features
+            $this->log('warning', 'WBB API not available, cannot create forum topic', [
                 'eventID' => $eventID,
-                'reason' => 'api_not_available'
+                'reason' => 'api_not_available_or_wbb_not_installed',
+                'note' => 'Forum topic creation requires WBB ThreadAction API'
             ]);
             
             return null;
@@ -1816,6 +1829,7 @@ class ICalImportCronjob extends AbstractCronjob
      * Store forum thread mapping for an event.
      * Creates a record linking the event to its forum thread.
      * Uses parameterized query for SQL injection protection.
+     * Table must be created during installation (see install.sql).
      * 
      * @param int $eventID Event ID
      * @param int $threadID Thread ID
@@ -1824,19 +1838,11 @@ class ICalImportCronjob extends AbstractCronjob
     protected function storeForumThreadMapping($eventID, $threadID)
     {
         try {
-            // Check if mapping table exists, create if needed
-            $sql = "CREATE TABLE IF NOT EXISTS calendar1_event_thread_map (
-                eventID INT(10) NOT NULL,
-                threadID INT(10) NOT NULL,
-                created INT(10) NOT NULL DEFAULT 0,
-                PRIMARY KEY (eventID),
-                KEY threadID (threadID)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-            WCF::getDB()->prepareStatement($sql)->execute();
-            
-            // Insert mapping
-            $sql = "INSERT INTO calendar1_event_thread_map (eventID, threadID, created) VALUES (?, ?, ?) 
-                    ON DUPLICATE KEY UPDATE threadID = VALUES(threadID)";
+            // Insert mapping (table created in install.sql)
+            // Uses INSERT...ON DUPLICATE KEY UPDATE for MySQL 8.0.20+ compatibility
+            $sql = "INSERT INTO calendar1_event_thread_map (eventID, threadID, created) 
+                    VALUES (?, ?, ?) AS new
+                    ON DUPLICATE KEY UPDATE threadID = new.threadID";
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $threadID, TIME_NOW]);
             
             $this->log('debug', 'Forum thread mapping stored', [
