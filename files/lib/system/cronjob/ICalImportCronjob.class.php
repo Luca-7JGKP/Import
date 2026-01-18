@@ -44,9 +44,17 @@ use wcf\system\WCF;
  * - Added import run timestamp tracking
  * - Enhanced logging for all deduplication decision points
  * 
+ * v4.3.4 Deep Debugging Enhancements:
+ * - Enhanced per-event logging with full event details
+ * - Import session ID for tracking related operations
+ * - Pre-import database state validation
+ * - Detailed fallback logic execution tracking
+ * - Comprehensive UID lifecycle logging
+ * - Cross-import duplicate detection mechanisms
+ * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.3.3
+ * @version 4.3.4
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -89,6 +97,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected $timezone = 'Europe/Berlin'; // Default timezone, can be overridden
     protected $processedUIDsInCurrentRun = []; // Track UIDs processed in current cronjob run to prevent intra-run duplicates
     protected $importRunTimestamp = null; // Timestamp when this import run started
+    protected $importSessionID = null; // Unique session ID for this import run for cross-reference logging
     
     public function execute($cronjob = null)
     {
@@ -96,9 +105,15 @@ class ICalImportCronjob extends AbstractCronjob
             parent::execute($cronjob);
         }
         
-        // Initialize import run timestamp for duplicate prevention within same run
+        // Initialize import run timestamp and session ID for duplicate prevention and tracking
         $this->importRunTimestamp = TIME_NOW;
+        $this->importSessionID = uniqid('import_', true);
         $this->processedUIDsInCurrentRun = [];
+        
+        $this->log('info', '=== IMPORT SESSION START ===', [
+            'sessionID' => $this->importSessionID,
+            'timestamp' => date('Y-m-d H:i:s', $this->importRunTimestamp)
+        ]);
         
         // v4.2: Ensure ALL required tables exist - 100% crash-proof!
         $this->ensureAllTablesExist();
@@ -159,18 +174,24 @@ class ICalImportCronjob extends AbstractCronjob
             foreach ($events as $event) {
                 if (empty($event['uid'])) {
                     $this->log('warning', 'Event ohne UID übersprungen', [
-                        'summary' => $event['summary'] ?? 'N/A'
+                        'summary' => $event['summary'] ?? 'N/A',
+                        'sessionID' => $this->importSessionID
                     ]);
                     $this->skippedCount++;
                     continue;
                 }
+                
+                // Enhanced per-event logging at start of processing
+                $this->logEventProcessingStart($event);
                 
                 // Check if we've already processed this UID in this cronjob run
                 if (isset($this->processedUIDsInCurrentRun[$event['uid']])) {
                     $this->log('warning', 'Event already processed in this run, skipping', [
                         'uid' => substr($event['uid'], 0, 30),
                         'title' => substr($event['summary'] ?? 'N/A', 0, 50),
-                        'reason' => 'already_processed_in_run'
+                        'reason' => 'already_processed_in_run',
+                        'sessionID' => $this->importSessionID,
+                        'firstProcessedAt' => date('Y-m-d H:i:s', $this->processedUIDsInCurrentRun[$event['uid']])
                     ]);
                     $this->skippedCount++;
                     continue;
@@ -186,6 +207,15 @@ class ICalImportCronjob extends AbstractCronjob
             $this->log('info', "Import: {$this->importedCount} neu, {$this->updatedCount} aktualisiert, {$this->skippedCount} übersprungen");
             $this->updateImportLastRun();
             $this->logImportResult($this->categoryID, count($events));
+            
+            $this->log('info', '=== IMPORT SESSION END ===', [
+                'sessionID' => $this->importSessionID,
+                'duration' => (TIME_NOW - $this->importRunTimestamp) . 's',
+                'imported' => $this->importedCount,
+                'updated' => $this->updatedCount,
+                'skipped' => $this->skippedCount,
+                'processedUIDs' => count($this->processedUIDsInCurrentRun)
+            ]);
             
         } catch (\Exception $e) {
             $this->log('error', 'Import-Fehler: ' . $e->getMessage(), [
@@ -627,12 +657,58 @@ class ICalImportCronjob extends AbstractCronjob
     {
         $existingEventID = $this->findExistingEvent($event['uid'], $event);
         if ($existingEventID) {
+            $this->logEventProcessingDecision($event, 'update', $existingEventID);
             $this->updateEvent($existingEventID, $event, $categoryID);
             $this->updatedCount++;
         } else {
+            $this->logEventProcessingDecision($event, 'create', null);
             $this->createEvent($event, $categoryID);
             $this->importedCount++;
         }
+    }
+    
+    /**
+     * Log detailed event information at start of processing.
+     * Part of v4.3.4 deep debugging enhancements.
+     * 
+     * @param array $event Event data from ICS
+     */
+    protected function logEventProcessingStart($event)
+    {
+        $this->log('debug', 'Processing event', [
+            'sessionID' => $this->importSessionID,
+            'uid' => substr($event['uid'] ?? 'MISSING', 0, 40),
+            'title' => substr($event['summary'] ?? 'N/A', 0, 60),
+            'location' => substr($event['location'] ?? 'N/A', 0, 40),
+            'startTime' => !empty($event['dtstart']) ? date('Y-m-d H:i:s', $event['dtstart']) : 'N/A',
+            'endTime' => !empty($event['dtend']) ? date('Y-m-d H:i:s', $event['dtend']) : 'N/A',
+            'allDay' => $event['allday'] ? 'yes' : 'no'
+        ]);
+    }
+    
+    /**
+     * Log the decision made for this event (create vs update).
+     * Part of v4.3.4 deep debugging enhancements.
+     * 
+     * @param array $event Event data from ICS
+     * @param string $decision 'create' or 'update'
+     * @param int|null $existingEventID Existing event ID if updating
+     */
+    protected function logEventProcessingDecision($event, $decision, $existingEventID)
+    {
+        $context = [
+            'sessionID' => $this->importSessionID,
+            'uid' => substr($event['uid'] ?? 'MISSING', 0, 40),
+            'title' => substr($event['summary'] ?? 'N/A', 0, 60),
+            'decision' => $decision,
+            'startTime' => !empty($event['dtstart']) ? date('Y-m-d H:i:s', $event['dtstart']) : 'N/A'
+        ];
+        
+        if ($decision === 'update' && $existingEventID) {
+            $context['existingEventID'] = $existingEventID;
+        }
+        
+        $this->log('info', "Event decision: {$decision}", $context);
     }
     
     /**
@@ -653,6 +729,12 @@ class ICalImportCronjob extends AbstractCronjob
     protected function findExistingEvent($uid, $event = [])
     {
         try {
+            $this->log('debug', 'Starting event lookup', [
+                'sessionID' => $this->importSessionID,
+                'uid' => substr($uid, 0, 40),
+                'strategies' => 'uid_mapping -> property_match'
+            ]);
+            
             // PRIMARY: Try UID mapping first
             // Parameterized query - SQL injection safe
             $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
@@ -661,6 +743,12 @@ class ICalImportCronjob extends AbstractCronjob
             $row = $statement->fetchArray();
             
             if ($row) {
+                $this->log('debug', 'UID mapping found, validating event exists', [
+                    'sessionID' => $this->importSessionID,
+                    'uid' => substr($uid, 0, 30),
+                    'eventID' => $row['eventID']
+                ]);
+                
                 // Validate event still exists
                 $sql = "SELECT eventID FROM calendar1_event WHERE eventID = ?";
                 $statement = WCF::getDB()->prepareStatement($sql);
@@ -668,21 +756,29 @@ class ICalImportCronjob extends AbstractCronjob
                 
                 if ($statement->fetchArray()) {
                     $this->log('debug', 'Existing event found by UID mapping', [
+                        'sessionID' => $this->importSessionID,
                         'uid' => substr($uid, 0, 30),
                         'eventID' => $row['eventID'],
-                        'reason' => 'uid_mapping_match'
+                        'reason' => 'uid_mapping_match',
+                        'strategy' => 'primary'
                     ]);
                     return $row['eventID'];
                 }
                 
                 // Event was deleted, clean up orphaned mapping
                 $this->log('warning', 'Orphaned UID mapping found, cleaning up', [
+                    'sessionID' => $this->importSessionID,
                     'uid' => substr($uid, 0, 30),
                     'eventID' => $row['eventID'],
                     'reason' => 'event_deleted'
                 ]);
                 $sql = "DELETE FROM calendar1_ical_uid_map WHERE icalUID = ?";
                 WCF::getDB()->prepareStatement($sql)->execute([$uid]);
+            } else {
+                $this->log('debug', 'No UID mapping found, trying property-based matching', [
+                    'sessionID' => $this->importSessionID,
+                    'uid' => substr($uid, 0, 30)
+                ]);
             }
             
             // SECONDARY: Try to find by event properties (for events without UID mapping)
@@ -788,14 +884,21 @@ class ICalImportCronjob extends AbstractCronjob
             $timeWindowEnd = $startTime + self::PROPERTY_MATCH_TIME_WINDOW;
             
             $this->log('debug', 'Attempting property-based matching', [
+                'sessionID' => $this->importSessionID,
                 'startTime' => date('Y-m-d H:i:s', $startTime),
                 'location' => substr($location, 0, 30),
                 'title' => substr($eventTitle, 0, 30),
-                'timeWindow' => self::PROPERTY_MATCH_TIME_WINDOW . ' seconds'
+                'timeWindow' => self::PROPERTY_MATCH_TIME_WINDOW . ' seconds',
+                'strategies' => 'time_location -> time_title_like -> time_title_fuzzy'
             ]);
             
             // Strategy 1: Match by exact startTime and location (most reliable for sports events)
             if (!empty($location)) {
+                $this->log('debug', 'Trying strategy 1: time + exact location', [
+                    'sessionID' => $this->importSessionID,
+                    'location' => substr($location, 0, 30)
+                ]);
+                
                 $sql = "SELECT e.eventID, e.subject, e.location, ed.startTime, m.icalUID
                         FROM calendar1_event e
                         JOIN calendar1_event_date ed ON e.eventID = ed.eventID
@@ -811,18 +914,28 @@ class ICalImportCronjob extends AbstractCronjob
                 
                 if ($row) {
                     $this->log('info', 'Event matched by startTime + location', [
+                        'sessionID' => $this->importSessionID,
                         'eventID' => $row['eventID'],
                         'subject' => substr($row['subject'], 0, 30),
                         'startTime' => date('Y-m-d H:i:s', $row['startTime']),
                         'location' => substr($location, 0, 30),
-                        'matchStrategy' => 'time_location_exact'
+                        'matchStrategy' => 'time_location_exact',
+                        'strategy' => 'secondary'
                     ]);
                     return $row['eventID'];
+                } else {
+                    $this->log('debug', 'Strategy 1 (time + location) found no match', [
+                        'sessionID' => $this->importSessionID
+                    ]);
                 }
             }
             
             // Strategy 2: Match by startTime and title similarity (fallback)
             // First try LIKE pattern matching
+            $this->log('debug', 'Trying strategy 2: time + title LIKE', [
+                'sessionID' => $this->importSessionID,
+                'titlePattern' => substr($eventTitle, 0, 30)
+            ]);
             $titleForPattern = substr($eventTitle, 0, self::PROPERTY_MATCH_TITLE_LENGTH);
             $titlePattern = $this->escapeLikePattern($titleForPattern);
             
@@ -841,19 +954,29 @@ class ICalImportCronjob extends AbstractCronjob
             
             if ($row) {
                 $this->log('info', 'Event matched by startTime + title similarity (LIKE)', [
+                    'sessionID' => $this->importSessionID,
                     'eventID' => $row['eventID'],
                     'subject' => substr($row['subject'], 0, 30),
                     'startTime' => date('Y-m-d H:i:s', $row['startTime']),
                     'titlePattern' => substr($titlePattern, 0, 30),
-                    'matchStrategy' => 'time_title_like'
+                    'matchStrategy' => 'time_title_like',
+                    'strategy' => 'secondary'
                 ]);
                 return $row['eventID'];
+            } else {
+                $this->log('debug', 'Strategy 2 (time + title LIKE) found no match', [
+                    'sessionID' => $this->importSessionID
+                ]);
             }
             
             // Strategy 3: Fuzzy title matching (NEW in v4.3.3)
             // Get candidates by time window only, then fuzzy match titles
             // Note: LIMIT 10 keeps SQL query fast while providing enough candidates for matching
             // Consider adding index on (categoryID, startTime) for optimal performance
+            $this->log('debug', 'Trying strategy 3: time + fuzzy title matching', [
+                'sessionID' => $this->importSessionID,
+                'similarityThreshold' => (self::FUZZY_MATCH_SIMILARITY_THRESHOLD * 100) . '%'
+            ]);
             $sql = "SELECT e.eventID, e.subject, ed.startTime
                     FROM calendar1_event e
                     JOIN calendar1_event_date ed ON e.eventID = ed.eventID
@@ -886,19 +1009,29 @@ class ICalImportCronjob extends AbstractCronjob
             
             if ($bestMatch) {
                 $this->log('info', 'Event matched by startTime + fuzzy title matching', [
+                    'sessionID' => $this->importSessionID,
                     'eventID' => $bestMatch['eventID'],
                     'subject' => substr($bestMatch['subject'], 0, 30),
                     'startTime' => date('Y-m-d H:i:s', $bestMatch['startTime']),
                     'similarity' => round($bestSimilarity * 100, 1) . '%',
-                    'matchStrategy' => 'time_title_fuzzy'
+                    'matchStrategy' => 'time_title_fuzzy',
+                    'strategy' => 'secondary'
                 ]);
                 return $bestMatch['eventID'];
+            } else {
+                $this->log('debug', 'Strategy 3 (fuzzy title) found no match above threshold', [
+                    'sessionID' => $this->importSessionID,
+                    'threshold' => (self::FUZZY_MATCH_SIMILARITY_THRESHOLD * 100) . '%',
+                    'candidatesChecked' => $statement->rowCount()
+                ]);
             }
             
             $this->log('debug', 'No property match found', [
+                'sessionID' => $this->importSessionID,
                 'startTime' => date('Y-m-d H:i:s', $startTime),
                 'location' => substr($location, 0, 30),
-                'title' => substr($eventTitle, 0, 30)
+                'title' => substr($eventTitle, 0, 30),
+                'allStrategiesFailed' => true
             ]);
             
             return null;
@@ -1019,9 +1152,11 @@ class ICalImportCronjob extends AbstractCronjob
             WCF::getDB()->prepareStatement($sql)->execute([$eventID, $uid, $this->importID, TIME_NOW]);
             
             $this->log('debug', 'UID mapping saved successfully', [
+                'sessionID' => $this->importSessionID,
                 'eventID' => $eventID,
                 'uid' => substr($uid, 0, 30),
-                'action' => $existingEventID !== false ? 'updated' : 'created'
+                'action' => $existingEventID !== false ? 'updated' : 'created',
+                'importID' => $this->importID
             ]);
             
             return true;
@@ -1062,13 +1197,20 @@ class ICalImportCronjob extends AbstractCronjob
             
             if ($existingEventID !== false) {
                 $this->log('error', 'Race condition detected: UID already mapped, aborting create', [
+                    'sessionID' => $this->importSessionID,
                     'uid' => substr($event['uid'], 0, 30),
                     'existingEventID' => $existingEventID,
-                    'reason' => 'race_condition_prevented'
+                    'reason' => 'race_condition_prevented',
+                    'title' => substr($event['summary'] ?? 'N/A', 0, 50)
                 ]);
                 $this->skippedCount++;
                 return;
             }
+            
+            $this->log('debug', 'Pre-create validation passed, no existing UID mapping found', [
+                'sessionID' => $this->importSessionID,
+                'uid' => substr($event['uid'], 0, 30)
+            ]);
             
             $endTime = $event['dtend'] ?: ($event['dtstart'] + 3600);
             
@@ -1081,11 +1223,14 @@ class ICalImportCronjob extends AbstractCronjob
             $participationEndTime = $this->calculateParticipationEndTime($event['dtstart']);
             
             $this->log('info', 'Creating new event', [
+                'sessionID' => $this->importSessionID,
                 'uid' => substr($event['uid'], 0, 30),
                 'title' => substr($eventTitle, 0, 50),
                 'startTime' => date('Y-m-d H:i:s', $event['dtstart']),
+                'endTime' => date('Y-m-d H:i:s', $endTime),
                 'location' => substr($event['location'] ?? '', 0, 30),
-                'categoryID' => $categoryID
+                'categoryID' => $categoryID,
+                'allDay' => $event['allday'] ? 'yes' : 'no'
             ]);
             
             // Try WoltLab API first (for Event-Thread support)
@@ -1123,20 +1268,26 @@ class ICalImportCronjob extends AbstractCronjob
                     // Save UID mapping with validation
                     if ($this->saveUidMapping($eventID, $event['uid'])) {
                         $this->log('info', 'Event created successfully via API', [
+                            'sessionID' => $this->importSessionID,
                             'eventID' => $eventID,
                             'uid' => substr($event['uid'], 0, 30),
-                            'title' => substr($eventTitle, 0, 50)
+                            'title' => substr($eventTitle, 0, 50),
+                            'method' => 'woltlab_api'
                         ]);
                     } else {
                         $this->log('error', 'Event created but UID mapping failed', [
+                            'sessionID' => $this->importSessionID,
                             'eventID' => $eventID,
-                            'uid' => substr($event['uid'], 0, 30)
+                            'uid' => substr($event['uid'], 0, 30),
+                            'method' => 'woltlab_api'
                         ]);
                     }
                     return;
                 } catch (\Exception $apiEx) {
                     $this->log('warning', 'API create failed, falling back to SQL', [
-                        'error' => $apiEx->getMessage()
+                        'sessionID' => $this->importSessionID,
+                        'error' => $apiEx->getMessage(),
+                        'uid' => substr($event['uid'], 0, 30)
                     ]);
                 }
             }
@@ -1180,14 +1331,18 @@ class ICalImportCronjob extends AbstractCronjob
             // Save UID mapping with validation
             if ($this->saveUidMapping($eventID, $event['uid'])) {
                 $this->log('info', 'Event created successfully via SQL', [
+                    'sessionID' => $this->importSessionID,
                     'eventID' => $eventID,
                     'uid' => substr($event['uid'], 0, 30),
-                    'title' => substr($eventTitle, 0, 50)
+                    'title' => substr($eventTitle, 0, 50),
+                    'method' => 'sql_fallback'
                 ]);
             } else {
                 $this->log('error', 'Event created but UID mapping failed', [
+                    'sessionID' => $this->importSessionID,
                     'eventID' => $eventID,
-                    'uid' => substr($event['uid'], 0, 30)
+                    'uid' => substr($event['uid'], 0, 30),
+                    'method' => 'sql_fallback'
                 ]);
             }
             
@@ -1247,11 +1402,14 @@ class ICalImportCronjob extends AbstractCronjob
             $participationEndTime = $this->calculateParticipationEndTime($event['dtstart']);
             
             $this->log('info', 'Updating existing event', [
+                'sessionID' => $this->importSessionID,
                 'eventID' => $eventID,
                 'uid' => substr($event['uid'], 0, 30),
                 'oldTitle' => substr($existingEvent['subject'], 0, 50),
                 'newTitle' => substr($eventTitle, 0, 50),
-                'startTime' => date('Y-m-d H:i:s', $event['dtstart'])
+                'startTime' => date('Y-m-d H:i:s', $event['dtstart']),
+                'endTime' => date('Y-m-d H:i:s', $endTime),
+                'location' => substr($event['location'] ?? '', 0, 30)
             ]);
             
             // Try WoltLab API first
@@ -1476,8 +1634,13 @@ class ICalImportCronjob extends AbstractCronjob
         $currentLevelNum = $levels[$currentLevel] ?? $defaultLogLevel;
         
         if ($levels[$level] <= $currentLevelNum) {
+            // Add sessionID to context if available and not already present
+            if ($this->importSessionID && !isset($context['sessionID'])) {
+                $context['_sessionID'] = $this->importSessionID;
+            }
+            
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
-            $logMessage = "[Calendar Import v4.3.3] [{$level}] {$message}{$contextStr}";
+            $logMessage = "[Calendar Import v4.3.4] [{$level}] {$message}{$contextStr}";
             error_log($logMessage);
             
             // Also log to database for persistent debugging
