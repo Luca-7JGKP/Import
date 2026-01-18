@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.3.2
+# 📅 Kalender iCal Import Plugin v4.3.3
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.3.2 |
+| **Version** | 4.3.3 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -314,6 +314,34 @@ LIMIT 10;
 ---
 
 ## 📝 Changelog
+
+### v4.3.3 (2026-01-18) - Critical Duplicate Prevention Enhancements
+- 🐛 **CRITICAL: Fixed validateEventsForDuplicates to actually deduplicate**
+  - Previously only logged duplicates but imported them anyway
+  - Now actively removes duplicate UIDs from ICS file before import
+  - Returns deduplicated list, preventing intra-file duplicates
+- 🔒 **Added Intra-Run Duplicate Tracking**
+  - New `processedUIDsInCurrentRun` tracking to prevent same UID being imported twice in one run
+  - Import run timestamp tracking for better debugging
+  - Prevents edge cases where ICS contains duplicates after initial dedup
+- ⏰ **Widened Property Matching Time Window**
+  - Increased from ±5 minutes to ±30 minutes (PROPERTY_MATCH_TIME_WINDOW = 1800)
+  - Handles ICS feeds with time shifts better
+  - Reduces false negatives in event matching
+- 🎯 **Added Fuzzy Title Matching**
+  - New Strategy 3: Fuzzy title matching with 70% similarity threshold
+  - Uses similar_text() algorithm for better title comparison
+  - Handles minor title variations (typos, formatting, etc.)
+  - Fallback after exact location and LIKE pattern matching
+- 📊 **Enhanced Logging for Deduplication**
+  - Logs duplicate removal count from ICS file
+  - Logs fuzzy matching similarity scores
+  - Tracks processed UIDs in current run
+  - Better visibility into why events are/aren't matched
+- ✅ **Improved Event Count Tracking**
+  - Now logs both pre- and post-deduplication counts
+  - Clearer visibility into how many duplicates were removed
+  - Better statistics for import operations
 
 ### v4.3.2 (2026-01-18) - Critical Duplicate Prevention Fixes
 - 🐛 **Fixed Race Condition in UID Mapping** - Enhanced validation prevents duplicate event creation
