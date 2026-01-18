@@ -45,6 +45,11 @@ class ICalImportCronjob extends AbstractCronjob
      */
     const PROPERTY_MATCH_TITLE_LENGTH = 50;
     
+    /**
+     * Maximum hours before event start for participation deadline (1 week = 168 hours)
+     */
+    const MAX_PARTICIPATION_HOURS_BEFORE = 168;
+    
     protected $importedCount = 0;
     protected $updatedCount = 0;
     protected $skippedCount = 0;
@@ -1063,10 +1068,20 @@ class ICalImportCronjob extends AbstractCronjob
     {
         // Check if custom hours before event start is configured
         if (defined('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE')) {
-            $hoursBefore = (int)CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE;
+            $configValue = CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE;
             
-            // Validate configuration: must be positive and reasonable (max 1 week = 168 hours)
-            if ($hoursBefore > 0 && $hoursBefore <= 168) {
+            // Validate that the constant value is numeric
+            if (!is_numeric($configValue)) {
+                $this->log('warning', 'CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE is not numeric, using default', [
+                    'configured' => $configValue
+                ]);
+                return $eventStartTime;
+            }
+            
+            $hoursBefore = (int)$configValue;
+            
+            // Validate configuration: must be positive and within reasonable range (1-168 hours = 1 week)
+            if ($hoursBefore > 0 && $hoursBefore <= self::MAX_PARTICIPATION_HOURS_BEFORE) {
                 $calculatedEndTime = $eventStartTime - ($hoursBefore * 3600);
                 
                 // Ensure participation end time is not in the past
@@ -1080,9 +1095,11 @@ class ICalImportCronjob extends AbstractCronjob
                 }
                 
                 return $calculatedEndTime;
-            } elseif ($hoursBefore > 168) {
-                $this->log('warning', 'CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE exceeds maximum (168 hours), using default', [
-                    'configured' => $hoursBefore
+            } else {
+                // Invalid value (0, negative, or exceeds maximum)
+                $this->log('warning', 'CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE is invalid (must be 1-168), using default', [
+                    'configured' => $hoursBefore,
+                    'max' => self::MAX_PARTICIPATION_HOURS_BEFORE
                 ]);
             }
         }
