@@ -13,6 +13,9 @@ use wcf\system\WCF;
  * Vollautomatische Version ohne manuelle Konfiguration.
  * 
  * Features:
+ * - Enhanced event deduplication (UID + property-based fallback matching)
+ * - Auto-migration of events without UID mappings
+ * - Updates expired events instead of creating duplicates
  * - Event-Title-Fallback (Summary → Location → Description → UID)
  * - Event-Thread-Erstellung via WoltLab API
  * - Configurable timezone support with fallback to server timezone
@@ -28,7 +31,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.2.0
+ * @version 4.3.0
  */
 class ICalImportCronjob extends AbstractCronjob
 {
