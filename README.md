@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.3.3
+# 📅 Kalender iCal Import Plugin v4.3.4
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.3.3 |
+| **Version** | 4.3.4 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -243,6 +243,20 @@ die automatisch Event-Threads erstellt, wenn die Kalender-Einstellungen korrekt 
 **Lösung (ab v4.3.0):** Das System erkennt jetzt automatisch existierende Events auch ohne UID-Mapping.
 Bei der nächsten Ausführung werden diese automatisch verknüpft.
 
+**Tiefgehende Diagnose (ab v4.3.4):** 
+Nutze die neuen Deep Debugging Features:
+```php
+// In config.inc.php
+define('CALENDAR_IMPORT_LOG_LEVEL', 'debug');
+```
+
+Siehe **[DEBUGGING_GUIDE_V434.md](DEBUGGING_GUIDE_V434.md)** für:
+- Session-Tracking und Log-Analyse
+- Strategie-Verfolgung (UID → Property → Fuzzy Matching)
+- Diagnostische SQL-Queries
+- Schritt-für-Schritt Troubleshooting-Workflow
+- Häufige Duplikat-Szenarien und ihre Lösungen
+
 **Manuell aufräumen (nur bei alten Duplikaten nötig):**
 ```sql
 -- Zeige Events ohne Mapping (sollten automatisch verknüpft werden)
@@ -314,6 +328,38 @@ LIMIT 10;
 ---
 
 ## 📝 Changelog
+
+### v4.3.4 (2026-01-18) - Deep Debugging & Traceability Enhancements
+- 🔍 **Import Session Tracking**
+  - Each cronjob run now has a unique session ID (importSessionID)
+  - All log messages include session context for correlation
+  - Session lifecycle logging (start/end with statistics)
+  - Can trace all operations within a single import run
+- 📊 **Enhanced Per-Event Logging**
+  - Detailed event information logged at processing start (UID, title, location, time, allDay)
+  - Event decision logging (create vs update) with full context
+  - Pre-create validation logging with event details
+  - Method tracking (woltlab_api vs sql_fallback)
+- 🎯 **Deduplication Strategy Visibility**
+  - Log when starting event lookup with strategy list
+  - Log each strategy attempt (UID mapping, time+location, time+title, fuzzy)
+  - Log strategy success/failure with match details
+  - Log similarity scores for fuzzy matching
+  - Track which strategy found the match (primary vs secondary)
+- ⏱️ **Intra-Run Duplicate Tracking Enhancements**
+  - Log first processed timestamp when detecting duplicates
+  - Better context for why event was skipped
+  - Session-aware duplicate detection
+- 📝 **Comprehensive Context in All Logs**
+  - SessionID automatically added to context when available
+  - Consistent context structure across all log messages
+  - JSON-formatted context for easy parsing
+  - Version bump to v4.3.4 in log messages
+- 🧪 **Testing & Documentation**
+  - Created comprehensive debugging guide (DEBUGGING_GUIDE_V434.md)
+  - Added Mainz 05 feed simulation test script
+  - Added test ICS file with intentional duplicates
+  - All existing tests pass with new changes
 
 ### v4.3.3 (2026-01-18) - Critical Duplicate Prevention Enhancements
 - 🐛 **CRITICAL: Fixed validateEventsForDuplicates to actually deduplicate**
