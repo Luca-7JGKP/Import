@@ -603,7 +603,8 @@ class ICalImportCronjob extends AbstractCronjob
         }
         
         // Validate categoryID is set (required for event matching)
-        if (empty($this->categoryID)) {
+        // Use explicit check to allow categoryID 0 if valid
+        if ($this->categoryID === null || $this->categoryID === '') {
             $this->log('error', 'Cannot match by properties: categoryID not set');
             return null;
         }
@@ -611,8 +612,8 @@ class ICalImportCronjob extends AbstractCronjob
         try {
             // Get event title using same fallback logic as import
             $eventTitle = $this->getEventTitle($event);
-            if (empty($eventTitle)) {
-                $this->log('warning', 'Cannot match by properties: event has no title');
+            if (empty($eventTitle) || !is_string($eventTitle)) {
+                $this->log('warning', 'Cannot match by properties: event has no valid title');
                 return null;
             }
             
@@ -691,13 +692,14 @@ class ICalImportCronjob extends AbstractCronjob
      * and ensure literal character matching.
      * 
      * @param string $input Input string to escape
-     * @return string Pattern with % wildcards ready for LIKE query
+     * @param bool $wrapWildcard Whether to wrap result with % wildcards (default: true)
+     * @return string Escaped string, optionally wrapped with % for LIKE query
      */
-    protected function escapeLikePattern($input)
+    protected function escapeLikePattern($input, $wrapWildcard = true)
     {
         // Escape backslashes first, then LIKE wildcards
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $input);
-        return '%' . $escaped . '%';
+        return $wrapWildcard ? '%' . $escaped . '%' : $escaped;
     }
     
     /**
