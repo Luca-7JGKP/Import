@@ -602,6 +602,12 @@ class ICalImportCronjob extends AbstractCronjob
             return null;
         }
         
+        // Validate categoryID is set (required for event matching)
+        if (empty($this->categoryID)) {
+            $this->log('error', 'Cannot match by properties: categoryID not set');
+            return null;
+        }
+        
         try {
             // Get event title using same fallback logic as import
             $eventTitle = $this->getEventTitle($event);
@@ -644,9 +650,8 @@ class ICalImportCronjob extends AbstractCronjob
             
             // Strategy 2: Match by startTime and title similarity (fallback)
             // Use LIKE for partial title matching to handle title changes
-            // Properly escape backslashes AND LIKE wildcards for SQL injection protection
             $titleForPattern = substr($eventTitle, 0, self::PROPERTY_MATCH_TITLE_LENGTH);
-            $titlePattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $titleForPattern) . '%';
+            $titlePattern = $this->escapeLikePattern($titleForPattern);
             
             $sql = "SELECT e.eventID, e.subject, ed.startTime
                     FROM calendar1_event e
@@ -678,6 +683,21 @@ class ICalImportCronjob extends AbstractCronjob
             ]);
             return null;
         }
+    }
+    
+    /**
+     * Escape string for use in SQL LIKE pattern.
+     * Escapes backslashes and LIKE wildcards (%, _) to prevent SQL injection
+     * and ensure literal character matching.
+     * 
+     * @param string $input Input string to escape
+     * @return string Pattern with % wildcards ready for LIKE query
+     */
+    protected function escapeLikePattern($input)
+    {
+        // Escape backslashes first, then LIKE wildcards
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $input);
+        return '%' . $escaped . '%';
     }
     
     /**
