@@ -68,27 +68,25 @@ class CalendarImportDebugPage extends AbstractPage {
         // 3. Get table structures for calendar tables
         foreach ($this->debugData['calendarTables'] as $table) {
             try {
-                // Table name from whitelist, validate for safety
-                if (preg_match('/^[a-z0-9_]+$/i', $table)) {
-                    $sql = "DESCRIBE `{$table}`";
-                    $statement = WCF::getDB()->prepareStatement($sql);
-                    $statement->execute();
-                    $this->debugData['tableStructures'][$table] = [];
-                    while ($row = $statement->fetchArray()) {
-                        $this->debugData['tableStructures'][$table][] = $row;
-                    }
+                $sql = "DESCRIBE " . $table;
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                $this->debugData['tableStructures'][$table] = [];
+                while ($row = $statement->fetchArray()) {
+                    $this->debugData['tableStructures'][$table][] = $row;
+                }
+            } catch (\Exception $e) {
+                $this->debugData['errors'][] = "DESCRIBE {$table}: " . $e->getMessage();
             }
             
-            // Get first 10 rows - Table name from whitelist, validate for safety
+            // Get first 10 rows
             try {
-                if (preg_match('/^[a-z0-9_]+$/i', $table)) {
-                    $sql = "SELECT * FROM `{$table}` LIMIT 10";
-                    $statement = WCF::getDB()->prepareStatement($sql);
-                    $statement->execute();
-                    $this->debugData['tableContents'][$table] = [];
-                    while ($row = $statement->fetchArray()) {
-                        $this->debugData['tableContents'][$table][] = $row;
-                    }
+                $sql = "SELECT * FROM " . $table . " LIMIT 10";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                $this->debugData['tableContents'][$table] = [];
+                while ($row = $statement->fetchArray()) {
+                    $this->debugData['tableContents'][$table][] = $row;
                 }
             } catch (\Exception $e) {
                 $this->debugData['errors'][] = "SELECT {$table}: " . $e->getMessage();

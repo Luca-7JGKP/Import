@@ -216,12 +216,11 @@ class CalendarImportDebug {
         ];
         
         try {
-            // Get column information - Table name from dynamic scan, validate for safety
-            if (preg_match('/^[a-z0-9_]+$/i', $tableName)) {
-                $sql = "DESCRIBE `{$tableName}`";
-                $statement = WCF::getDB()->prepareStatement($sql);
-                $statement->execute();
-                $columns = $statement->fetchAll(\PDO::FETCH_ASSOC);
+            // Get column information
+            $sql = "DESCRIBE " . $tableName;
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute();
+            $columns = $statement->fetchAll(\PDO::FETCH_ASSOC);
             
             $columnNames = array_column($columns, 'Field');
             $result['columns'] = $columnNames;
@@ -241,9 +240,9 @@ class CalendarImportDebug {
                 $result['type'] = 'calendars';
             }
             
-            // Get row count - Table name from dynamic scan, validate for safety
-            if ($result['is_calendar_related'] && preg_match('/^[a-z0-9_]+$/i', $tableName)) {
-                $sql = "SELECT COUNT(*) FROM `{$tableName}`";
+            // Get row count
+            if ($result['is_calendar_related']) {
+                $sql = "SELECT COUNT(*) FROM " . $tableName;
                 $statement = WCF::getDB()->prepareStatement($sql);
                 $statement->execute();
                 $result['row_count'] = $statement->fetchColumn();
@@ -269,12 +268,11 @@ class CalendarImportDebug {
         
         foreach ($this->detectedTables as $tableName => $tableInfo) {
             try {
-                // Table name from dynamic scan, validate for safety
-                if (preg_match('/^[a-z0-9_]+$/i', $tableName)) {
-                    $sql = "SELECT * FROM `{$tableName}`";
-                    $statement = WCF::getDB()->prepareStatement($sql);
-                    $statement->execute();
-                    $rows = $statement->fetchAll(\PDO::FETCH_ASSOC);
+                $sql = "SELECT * FROM " . $tableName;
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute();
+                $rows = $statement->fetchAll(\PDO::FETCH_ASSOC);
+                
                 foreach ($rows as $row) {
                     if ($tableInfo['type'] === 'calendars') {
                         $result['calendars'][] = $this->normalizeCalendarFromDB($row, $tableName);
@@ -282,7 +280,7 @@ class CalendarImportDebug {
                         $result['events'][] = $this->normalizeEventFromDB($row, $tableName);
                     }
                 }
-                }
+                
             } catch (DatabaseException $e) {
                 $this->stats['errors'][] = "Error fetching from {$tableName}: " . $e->getMessage();
             }
