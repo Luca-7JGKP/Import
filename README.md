@@ -1,10 +1,10 @@
-# 📅 Kalender iCal Import Plugin v4.2.0
+# 📅 Kalender iCal Import Plugin v4.3.0
 
 **Automatischer ICS-Import für WoltLab Suite 6.1**
 
 | | |
 |--|--|
-| **Version** | 4.2.0 |
+| **Version** | 4.3.0 |
 | **Autor** | Luca Berwind |
 | **Paket** | `com.lucaberwind.wcf.calendar.import` |
 | **Kompatibilität** | WoltLab Suite 6.1+ / Calendar 6.1+ |
@@ -24,7 +24,9 @@ Importiert **automatisch** Kalender-Events aus ICS-Dateien (z.B. Mainz 05 Spielp
 | Feature | Beschreibung |
 |---------|--------------|
 | 🚀 **Vollautomatisch** | Keine ACP-Konfiguration nötig |
-| 🔄 **Keine Duplikate** | UID-Mapping mit UNIQUE constraint verhindert doppelte Events |
+| 🔄 **Intelligente Deduplication** | Verhindert Duplikate durch UID-Mapping + Property-basierte Erkennung |
+| 🔁 **Event Updates** | Aktualisiert existierende Events (auch abgelaufene) statt neue zu erstellen |
+| 🎯 **Auto-Migration** | Findet und verknüpft Events ohne UID-Mapping automatisch |
 | 📝 **Event-Threads** | Automatisch Forum-Threads via WoltLab API erstellen |
 | 🏷️ **Titel-Fallback** | Events erhalten immer einen Titel (Summary → Location → Description → UID) |
 | 👥 **Teilnahme** | 99 Begleiter, öffentlich, änderbar |
@@ -218,17 +220,53 @@ die automatisch Event-Threads erstellt, wenn die Kalender-Einstellungen korrekt 
 
 ### Duplikate vorhanden
 
-**Lösung:** Alte Events ohne UID-Mapping löschen:
-```sql
--- Zeige Events ohne Mapping
-SELECT e.eventID, e.subject FROM calendar1_event e
-LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
-WHERE m.mapID IS NULL;
+**Lösung (ab v4.3.0):** Das System erkennt jetzt automatisch existierende Events auch ohne UID-Mapping.
+Bei der nächsten Ausführung werden diese automatisch verknüpft.
 
--- Löschen (vorsichtig!)
-DELETE e FROM calendar1_event e
+**Manuell aufräumen (nur bei alten Duplikaten nötig):**
+```sql
+-- Zeige Events ohne Mapping (sollten automatisch verknüpft werden)
+SELECT e.eventID, e.subject, ed.startTime 
+FROM calendar1_event e
+JOIN calendar1_event_date ed ON e.eventID = ed.eventID
 LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
-WHERE m.mapID IS NULL;
+WHERE m.mapID IS NULL
+ORDER BY ed.startTime DESC
+LIMIT 10;
+
+-- Falls wirklich Duplikate existieren (sehr selten):
+-- Prüfe zuerst manuell, ob Events identisch sind!
+```
+
+**Wie das neue System Duplikate verhindert:**
+1. **UID-Match**: Sucht zuerst nach Event mit bekanntem UID
+2. **Property-Match**: Falls nicht gefunden, sucht nach Event mit gleicher Startzeit + Location
+3. **Auto-Link**: Verknüpft gefundenes Event automatisch mit UID
+4. **Update**: Aktualisiert existierendes Event statt neues zu erstellen
+
+### Event wird nicht aktualisiert
+
+**Symptom:** Event-Titel hat sich geändert, aber im Kalender bleibt der alte Titel.
+
+**Lösung (ab v4.3.0):** 
+- Das System findet Events jetzt auch wenn UID fehlt oder sich geändert hat
+- Bei nächstem Cronjob-Lauf (alle 30 Min) wird Event automatisch aktualisiert
+- Check Log für Details: `WHERE logLevel IN ('info', 'warning')`
+
+**Debug:**
+```sql
+-- Zeige letzte Import-Aktivitäten
+SELECT * FROM wcf1_calendar_import_log 
+ORDER BY importTime DESC 
+LIMIT 20;
+
+-- Zeige UID-Mappings
+SELECT m.*, e.subject, ed.startTime
+FROM calendar1_ical_uid_map m
+JOIN calendar1_event e ON m.eventID = e.eventID
+JOIN calendar1_event_date ed ON e.eventID = ed.eventID
+ORDER BY m.lastUpdated DESC
+LIMIT 10;
 ```
 
 ---
@@ -256,6 +294,17 @@ WHERE m.mapID IS NULL;
 ---
 
 ## 📝 Changelog
+
+### v4.3.0 (2026-01-18) - Enhanced Event Deduplication
+- ✅ **Property-Based Deduplication** - Findet Events auch ohne UID-Mapping
+  - Primary: UID-basierte Suche (UNIQUE constraint)
+  - Secondary: startTime + Location Match (präzise für Sportevents)
+  - Tertiary: startTime + Titel-Ähnlichkeit (Fallback)
+- ✅ **Auto-Migration** - Erstellt UID-Mappings für existierende Events automatisch
+- ✅ **Expired Event Updates** - Aktualisiert abgelaufene Events statt neue zu erstellen
+- ✅ **UID Change Handling** - Handhabt ICS-Feeds die UIDs bei Änderungen ändern
+- ✅ **Duplicate Prevention** - Verhindert Duplikate auch bei fehlenden UID-Mappings
+- ✅ **Time Window Matching** - ±5 Minuten Toleranz für Zeitunterschiede
 
 ### v4.2.0 (2026-01-15) - WoltLab Suite 6.1 Best Practices
 - ✅ **Konfigurierbare Timezone** - Unterstützt alle PHP-Timezones

@@ -13,6 +13,9 @@ use wcf\system\WCF;
  * Vollautomatische Version ohne manuelle Konfiguration.
  * 
  * Features:
+ * - Enhanced event deduplication (UID + property-based fallback matching)
+ * - Auto-migration of events without UID mappings
+ * - Updates expired events instead of creating duplicates
  * - Event-Title-Fallback (Summary → Location → Description → UID)
  * - Event-Thread-Erstellung via WoltLab API
  * - Configurable timezone support with fallback to server timezone
@@ -28,10 +31,20 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.2.0
+ * @version 4.3.0
  */
 class ICalImportCronjob extends AbstractCronjob
 {
+    /**
+     * Time window in seconds for property-based event matching (±5 minutes)
+     */
+    const PROPERTY_MATCH_TIME_WINDOW = 300;
+    
+    /**
+     * Maximum characters from title to use in LIKE pattern matching
+     */
+    const PROPERTY_MATCH_TITLE_LENGTH = 50;
+    
     protected $importedCount = 0;
     protected $updatedCount = 0;
     protected $skippedCount = 0;
@@ -402,7 +415,7 @@ class ICalImportCronjob extends AbstractCronjob
     protected function fetchIcsContent($url)
     {
         $context = stream_context_create([
-            'http' => ['timeout' => 30, 'user_agent' => 'WoltLab Calendar Import/4.2.0'],
+            'http' => ['timeout' => 30, 'user_agent' => 'WoltLab Calendar Import/4.3.0'],
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
         $content = @file_get_contents($url, false, $context);
@@ -487,7 +500,7 @@ class ICalImportCronjob extends AbstractCronjob
     
     protected function importEvent($event, $categoryID)
     {
-        $existingEventID = $this->findExistingEvent($event['uid']);
+        $existingEventID = $this->findExistingEvent($event['uid'], $event);
         if ($existingEventID) {
             $this->updateEvent($existingEventID, $event, $categoryID);
             $this->updatedCount++;
@@ -498,17 +511,24 @@ class ICalImportCronjob extends AbstractCronjob
     }
     
     /**
-     * Find existing event by iCal UID.
-     * Uses UNIQUE constraint on icalUID to prevent duplicates.
-     * Validates that event still exists before returning.
+     * Find existing event by iCal UID with enhanced deduplication.
+     * 
+     * Strategy:
+     * 1. Primary: Match by UID in UID mapping table (UNIQUE constraint prevents duplicates)
+     * 2. Secondary: If no UID match, try to find event by properties (startTime + location/title)
+     *    This handles events imported before UID mapping or when UID changes in ICS feed
+     * 3. If found via properties, create UID mapping for future updates
+     * 
      * Uses parameterized queries for SQL injection protection.
      * 
      * @param string $uid iCal UID
+     * @param array $event Event data for fallback matching
      * @return int|null Event ID if found, null otherwise
      */
-    protected function findExistingEvent($uid)
+    protected function findExistingEvent($uid, $event = [])
     {
         try {
+            // PRIMARY: Try UID mapping first
             // Parameterized query - SQL injection safe
             $sql = "SELECT eventID FROM calendar1_ical_uid_map WHERE icalUID = ?";
             $statement = WCF::getDB()->prepareStatement($sql);
@@ -522,20 +542,37 @@ class ICalImportCronjob extends AbstractCronjob
                 $statement->execute([$row['eventID']]);
                 
                 if ($statement->fetchArray()) {
-                    $this->log('debug', 'Existing event found for UID', [
+                    $this->log('debug', 'Existing event found by UID', [
                         'uid' => substr($uid, 0, 30),
                         'eventID' => $row['eventID']
                     ]);
                     return $row['eventID'];
                 }
                 
-                // Event was deleted, clean up mapping
+                // Event was deleted, clean up orphaned mapping
                 $this->log('warning', 'Orphaned UID mapping found, cleaning up', [
                     'uid' => substr($uid, 0, 30),
                     'eventID' => $row['eventID']
                 ]);
                 $sql = "DELETE FROM calendar1_ical_uid_map WHERE icalUID = ?";
                 WCF::getDB()->prepareStatement($sql)->execute([$uid]);
+            }
+            
+            // SECONDARY: Try to find by event properties (for events without UID mapping)
+            // This handles:
+            // - Events imported before UID system was implemented
+            // - ICS feeds that change UIDs when event details change
+            // - Prevents duplicates when re-importing existing events
+            $eventID = $this->findEventByProperties($event);
+            if ($eventID) {
+                // Found existing event without UID mapping - create mapping now
+                $this->log('info', 'Found existing event by properties, creating UID mapping', [
+                    'uid' => substr($uid, 0, 30),
+                    'eventID' => $eventID,
+                    'startTime' => $event['dtstart'] ?? 'unknown'
+                ]);
+                $this->saveUidMapping($eventID, $uid);
+                return $eventID;
             }
             
             return null;
@@ -545,6 +582,124 @@ class ICalImportCronjob extends AbstractCronjob
             ]);
             return null;
         }
+    }
+    
+    /**
+     * Find event by properties when UID is not found in mapping.
+     * Matches events based on startTime and location/title similarity.
+     * This prevents duplicates for events imported before UID system
+     * or when ICS feed changes UIDs.
+     * 
+     * Uses parameterized queries for SQL injection protection.
+     * 
+     * @param array $event Event data with dtstart, location, summary
+     * @return int|null Event ID if found, null otherwise
+     */
+    protected function findEventByProperties($event)
+    {
+        // Validate required data
+        if (empty($event['dtstart']) || !is_numeric($event['dtstart'])) {
+            return null;
+        }
+        
+        // Validate categoryID is set (required for event matching)
+        // Use explicit check to allow categoryID 0 if valid
+        if ($this->categoryID === null || $this->categoryID === '') {
+            $this->log('error', 'Cannot match by properties: categoryID not set');
+            return null;
+        }
+        
+        try {
+            // Get event title using same fallback logic as import
+            $eventTitle = $this->getEventTitle($event);
+            if (empty($eventTitle) || !is_string($eventTitle)) {
+                $this->log('warning', 'Cannot match by properties: event has no valid title');
+                return null;
+            }
+            
+            $location = $event['location'] ?? '';
+            $startTime = (int)$event['dtstart'];
+            
+            // Time window for matching (configurable via class constant)
+            $timeWindowStart = $startTime - self::PROPERTY_MATCH_TIME_WINDOW;
+            $timeWindowEnd = $startTime + self::PROPERTY_MATCH_TIME_WINDOW;
+            
+            // Strategy 1: Match by exact startTime and location (most reliable for sports events)
+            if (!empty($location)) {
+                $sql = "SELECT e.eventID, e.subject, e.location, ed.startTime
+                        FROM calendar1_event e
+                        JOIN calendar1_event_date ed ON e.eventID = ed.eventID
+                        LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
+                        WHERE ed.startTime BETWEEN ? AND ?
+                        AND e.location = ?
+                        AND m.mapID IS NULL
+                        AND e.categoryID = ?
+                        LIMIT 1";
+                $statement = WCF::getDB()->prepareStatement($sql);
+                $statement->execute([$timeWindowStart, $timeWindowEnd, $location, $this->categoryID]);
+                $row = $statement->fetchArray();
+                
+                if ($row) {
+                    $this->log('debug', 'Event found by startTime + location', [
+                        'eventID' => $row['eventID'],
+                        'startTime' => $startTime,
+                        'location' => substr($location, 0, 30)
+                    ]);
+                    return $row['eventID'];
+                }
+            }
+            
+            // Strategy 2: Match by startTime and title similarity (fallback)
+            // Use LIKE for partial title matching to handle title changes
+            $titleForPattern = substr($eventTitle, 0, self::PROPERTY_MATCH_TITLE_LENGTH);
+            $titlePattern = $this->escapeLikePattern($titleForPattern);
+            
+            $sql = "SELECT e.eventID, e.subject, ed.startTime
+                    FROM calendar1_event e
+                    JOIN calendar1_event_date ed ON e.eventID = ed.eventID
+                    LEFT JOIN calendar1_ical_uid_map m ON e.eventID = m.eventID
+                    WHERE ed.startTime BETWEEN ? AND ?
+                    AND e.subject LIKE ?
+                    AND m.mapID IS NULL
+                    AND e.categoryID = ?
+                    LIMIT 1";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$timeWindowStart, $timeWindowEnd, $titlePattern, $this->categoryID]);
+            $row = $statement->fetchArray();
+            
+            if ($row) {
+                $this->log('debug', 'Event found by startTime + title similarity', [
+                    'eventID' => $row['eventID'],
+                    'startTime' => $startTime,
+                    'titlePattern' => substr($titlePattern, 0, 30)
+                ]);
+                return $row['eventID'];
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            $this->log('error', 'Error finding event by properties: ' . $e->getMessage(), [
+                'startTime' => $event['dtstart'] ?? 'unknown',
+                'trace' => substr($e->getTraceAsString(), 0, 200)
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Escape string for use in SQL LIKE pattern.
+     * Escapes backslashes and LIKE wildcards (%, _) to prevent SQL injection
+     * and ensure literal character matching.
+     * 
+     * @param string $input Input string to escape
+     * @param bool $wrapWildcard Whether to wrap result with % wildcards (default: true)
+     * @return string Escaped string, optionally wrapped with % for LIKE query
+     */
+    protected function escapeLikePattern($input, $wrapWildcard = true)
+    {
+        // Escape backslashes first, then LIKE wildcards
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $input);
+        return $wrapWildcard ? '%' . $escaped . '%' : $escaped;
     }
     
     /**
@@ -862,7 +1017,7 @@ class ICalImportCronjob extends AbstractCronjob
         
         if ($levels[$level] <= $currentLevelNum) {
             $contextStr = !empty($context) ? ' | Context: ' . json_encode($context) : '';
-            $logMessage = "[Calendar Import v4.2] [{$level}] {$message}{$contextStr}";
+            $logMessage = "[Calendar Import v4.3] [{$level}] {$message}{$contextStr}";
             error_log($logMessage);
             
             // Also log to database for persistent debugging

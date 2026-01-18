@@ -3,10 +3,10 @@
     <packageinformation>
         <packagename>Kalender iCal Import</packagename>
         <packagename language="en">Calendar iCal Import</packagename>
-        <packagedescription>Importiert Kalender-Events aus iCal-Dateien vollautomatisch. Features: Event-Title-Fallback, automatische Thread-Erstellung, keine Timezone-Workarounds.</packagedescription>
-        <packagedescription language="en">Imports calendar events from iCal files fully automatically. Features: Event title fallback, automatic thread creation, no timezone workarounds.</packagedescription>
-        <version>4.2.0</version>
-        <date>2026-01-15</date>
+        <packagedescription>Importiert Kalender-Events aus iCal-Dateien vollautomatisch. Features: Intelligente Deduplication, Event-Title-Fallback, automatische Thread-Erstellung, keine Timezone-Workarounds.</packagedescription>
+        <packagedescription language="en">Imports calendar events from iCal files fully automatically. Features: Intelligent deduplication, event title fallback, automatic thread creation, no timezone workarounds.</packagedescription>
+        <version>4.3.0</version>
+        <date>2026-01-18</date>
     </packageinformation>
     
     <authorinformation>
