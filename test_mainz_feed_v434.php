@@ -272,17 +272,19 @@ class Mainz05FeedTester
             }
             
             // Try to find by title + time
+            $foundByTitle = false;
             if (!$foundByLocation && !empty($title)) {
                 foreach ($this->eventsByProperties as $stored) {
                     if (abs($stored['startTime'] - $startTime) <= 1800 && 
                         $this->calculateSimilarity($stored['title'], $title) >= 0.7) {
+                        $foundByTitle = true;
                         $matchedByTitle++;
                         break;
                     }
                 }
             }
             
-            if (!$foundByLocation && !$matchedByTitle) {
+            if (!$foundByLocation && !$foundByTitle) {
                 $notMatched++;
             }
         }
@@ -317,8 +319,10 @@ class Mainz05FeedTester
                 'user_agent' => 'WoltLab Calendar Import Test/4.3.4'
             ],
             'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false
+                // SSL verification enabled by default
+                // For test environments with self-signed certs, disable via:
+                // 'verify_peer' => false,
+                // 'verify_peer_name' => false
             ]
         ]);
         
