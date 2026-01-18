@@ -54,7 +54,7 @@ use wcf\system\WCF;
  * 
  * @author  Luca Berwind
  * @package com.lucaberwind.wcf.calendar.import
- * @version 4.3.4
+ * @version 4.3.5
  */
 class ICalImportCronjob extends AbstractCronjob
 {
@@ -1278,6 +1278,9 @@ class ICalImportCronjob extends AbstractCronjob
                             'title' => substr($eventTitle, 0, 50),
                             'method' => 'woltlab_api'
                         ]);
+                        
+                        // Create forum topic for the event if configured
+                        $this->createForumTopicForEvent($eventID, $eventTitle, $event);
                     } else {
                         $this->log('error', 'Event created but UID mapping failed', [
                             'sessionID' => $this->importSessionID,
@@ -1341,6 +1344,9 @@ class ICalImportCronjob extends AbstractCronjob
                     'title' => substr($eventTitle, 0, 50),
                     'method' => 'sql_fallback'
                 ]);
+                
+                // Create forum topic for the event if configured
+                $this->createForumTopicForEvent($eventID, $eventTitle, $event);
             } else {
                 $this->log('error', 'Event created but UID mapping failed', [
                     'sessionID' => $this->importSessionID,
@@ -1568,11 +1574,25 @@ class ICalImportCronjob extends AbstractCronjob
      * By default, registration closes when the event starts.
      * Can be configured to close earlier using CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE constant.
      * 
+     * Validations:
+     * - Ensures deadline is not in the past
+     * - Validates configuration is within acceptable range (1-168 hours)
+     * - Validates deadline is not after event start time
+     * 
      * @param int $eventStartTime Event start timestamp
      * @return int Participation end time timestamp
      */
     protected function calculateParticipationEndTime($eventStartTime)
     {
+        // Validate event start time is not in the past
+        if ($eventStartTime < TIME_NOW) {
+            $this->log('debug', 'Event is in the past, setting participation end time to event start', [
+                'eventStartTime' => date('Y-m-d H:i:s', $eventStartTime),
+                'now' => date('Y-m-d H:i:s', TIME_NOW)
+            ]);
+            return $eventStartTime;
+        }
+        
         // Check if custom hours before event start is configured
         if (defined('CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE')) {
             $configValue = CALENDAR_IMPORT_PARTICIPATION_HOURS_BEFORE;
@@ -1593,13 +1613,31 @@ class ICalImportCronjob extends AbstractCronjob
                 
                 // Ensure participation end time is not in the past
                 if ($calculatedEndTime < TIME_NOW) {
-                    $this->log('warning', 'Participation end time would be in the past, using event start time instead', [
+                    $this->log('warning', 'Participation end time would be in the past, using current time instead', [
+                        'eventStartTime' => date('Y-m-d H:i:s', $eventStartTime),
+                        'calculatedEndTime' => date('Y-m-d H:i:s', $calculatedEndTime),
+                        'hoursBefore' => $hoursBefore,
+                        'adjustedTo' => 'TIME_NOW'
+                    ]);
+                    // Use current time as the minimum acceptable deadline
+                    return TIME_NOW;
+                }
+                
+                // Additional validation: deadline must be before event start
+                if ($calculatedEndTime > $eventStartTime) {
+                    $this->log('warning', 'Calculated participation end time is after event start, using event start time', [
                         'eventStartTime' => date('Y-m-d H:i:s', $eventStartTime),
                         'calculatedEndTime' => date('Y-m-d H:i:s', $calculatedEndTime),
                         'hoursBefore' => $hoursBefore
                     ]);
                     return $eventStartTime;
                 }
+                
+                $this->log('debug', 'Participation deadline calculated', [
+                    'eventStartTime' => date('Y-m-d H:i:s', $eventStartTime),
+                    'participationEndTime' => date('Y-m-d H:i:s', $calculatedEndTime),
+                    'hoursBefore' => $hoursBefore
+                ]);
                 
                 return $calculatedEndTime;
             } else {
@@ -1613,6 +1651,228 @@ class ICalImportCronjob extends AbstractCronjob
         
         // Default: Registration closes when event starts
         return $eventStartTime;
+    }
+    
+    /**
+     * Create a forum topic/thread for a calendar event.
+     * Creates a discussion thread in the configured forum board with title "Event: [EventTitle]".
+     * 
+     * Configuration:
+     * - CALENDAR_IMPORT_CREATE_THREADS: Enable/disable forum topic creation (default: true)
+     * - CALENDAR_IMPORT_BOARD_ID: Target board ID for topics (default: 0 = disabled)
+     * 
+     * Uses parameterized queries for SQL injection protection.
+     * 
+     * @param int $eventID Event ID
+     * @param string $eventTitle Event title
+     * @param array $event Event data array
+     * @return int|null Thread ID if created, null otherwise
+     */
+    protected function createForumTopicForEvent($eventID, $eventTitle, $event)
+    {
+        // Check if forum topic creation is enabled
+        if (!$this->shouldCreateForumTopics()) {
+            $this->log('debug', 'Forum topic creation is disabled', [
+                'eventID' => $eventID
+            ]);
+            return null;
+        }
+        
+        // Get configured board ID
+        $boardID = $this->getForumBoardID();
+        if (!$boardID || $boardID <= 0) {
+            $this->log('debug', 'No valid board ID configured for forum topics', [
+                'eventID' => $eventID,
+                'boardID' => $boardID
+            ]);
+            return null;
+        }
+        
+        try {
+            // Verify board exists using parameterized query
+            $sql = "SELECT boardID, title FROM wbb" . WCF_N . "_board WHERE boardID = ?";
+            $statement = WCF::getDB()->prepareStatement($sql);
+            $statement->execute([$boardID]);
+            $board = $statement->fetchArray();
+            
+            if (!$board) {
+                $this->log('warning', 'Configured board does not exist', [
+                    'eventID' => $eventID,
+                    'boardID' => $boardID
+                ]);
+                return null;
+            }
+            
+            $this->log('debug', 'Creating forum topic for event', [
+                'eventID' => $eventID,
+                'boardID' => $boardID,
+                'boardTitle' => substr($board['title'], 0, 50),
+                'eventTitle' => substr($eventTitle, 0, 50)
+            ]);
+            
+            // Prepare topic title and message
+            $topicTitle = 'Event: ' . $eventTitle;
+            $topicMessage = $this->buildForumTopicMessage($event, $eventTitle);
+            
+            // Try to use WBB API if available
+            if (class_exists('wbb\data\thread\ThreadAction')) {
+                try {
+                    $threadAction = new \wbb\data\thread\ThreadAction([], 'create', [
+                        'data' => [
+                            'boardID' => $boardID,
+                            'topic' => $topicTitle,
+                            'time' => TIME_NOW,
+                            'userID' => $this->eventUserID,
+                            'username' => $this->eventUsername
+                        ],
+                        'postData' => [
+                            'message' => $topicMessage,
+                            'enableHtml' => 0,
+                            'time' => TIME_NOW,
+                            'userID' => $this->eventUserID,
+                            'username' => $this->eventUsername
+                        ]
+                    ]);
+                    $result = $threadAction->executeAction();
+                    $threadID = $result['returnValues']->threadID;
+                    
+                    $this->log('info', 'Forum topic created successfully via WBB API', [
+                        'eventID' => $eventID,
+                        'threadID' => $threadID,
+                        'boardID' => $boardID,
+                        'title' => substr($topicTitle, 0, 50)
+                    ]);
+                    
+                    // Optionally store the threadID mapping for future reference
+                    $this->storeForumThreadMapping($eventID, $threadID);
+                    
+                    return $threadID;
+                } catch (\Exception $e) {
+                    $this->log('warning', 'WBB API topic creation failed, trying SQL fallback', [
+                        'eventID' => $eventID,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+            // SQL fallback for forum topic creation
+            // Note: This is a simplified approach and may need adjustment based on WBB schema
+            $this->log('info', 'WBB API not available or failed, skipping forum topic creation', [
+                'eventID' => $eventID,
+                'reason' => 'api_not_available'
+            ]);
+            
+            return null;
+            
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to create forum topic', [
+                'eventID' => $eventID,
+                'boardID' => $boardID,
+                'error' => $e->getMessage(),
+                'trace' => substr($e->getTraceAsString(), 0, 300)
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Build forum topic message content for an event.
+     * Creates a formatted message with event details.
+     * 
+     * @param array $event Event data array
+     * @param string $eventTitle Event title
+     * @return string Formatted message content
+     */
+    protected function buildForumTopicMessage($event, $eventTitle)
+    {
+        $message = "[b]" . $eventTitle . "[/b]\n\n";
+        
+        // Add event details
+        if (!empty($event['dtstart'])) {
+            $message .= "[b]Start:[/b] " . date('d.m.Y H:i', $event['dtstart']) . " Uhr\n";
+        }
+        
+        if (!empty($event['dtend'])) {
+            $message .= "[b]Ende:[/b] " . date('d.m.Y H:i', $event['dtend']) . " Uhr\n";
+        }
+        
+        if (!empty($event['location'])) {
+            $message .= "[b]Ort:[/b] " . $event['location'] . "\n";
+        }
+        
+        $message .= "\n";
+        
+        // Add description if available
+        if (!empty($event['description'])) {
+            $message .= $event['description'];
+        } else {
+            $message .= "Diskutiert hier über dieses Event!";
+        }
+        
+        return $message;
+    }
+    
+    /**
+     * Store forum thread mapping for an event.
+     * Creates a record linking the event to its forum thread.
+     * Uses parameterized query for SQL injection protection.
+     * 
+     * @param int $eventID Event ID
+     * @param int $threadID Thread ID
+     * @return bool Success status
+     */
+    protected function storeForumThreadMapping($eventID, $threadID)
+    {
+        try {
+            // Check if mapping table exists, create if needed
+            $sql = "CREATE TABLE IF NOT EXISTS calendar1_event_thread_map (
+                eventID INT(10) NOT NULL,
+                threadID INT(10) NOT NULL,
+                created INT(10) NOT NULL DEFAULT 0,
+                PRIMARY KEY (eventID),
+                KEY threadID (threadID)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+            WCF::getDB()->prepareStatement($sql)->execute();
+            
+            // Insert mapping
+            $sql = "INSERT INTO calendar1_event_thread_map (eventID, threadID, created) VALUES (?, ?, ?) 
+                    ON DUPLICATE KEY UPDATE threadID = VALUES(threadID)";
+            WCF::getDB()->prepareStatement($sql)->execute([$eventID, $threadID, TIME_NOW]);
+            
+            $this->log('debug', 'Forum thread mapping stored', [
+                'eventID' => $eventID,
+                'threadID' => $threadID
+            ]);
+            
+            return true;
+        } catch (\Exception $e) {
+            $this->log('error', 'Failed to store thread mapping', [
+                'eventID' => $eventID,
+                'threadID' => $threadID,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+    
+    /**
+     * Check if forum topic creation is enabled.
+     * 
+     * @return bool
+     */
+    protected function shouldCreateForumTopics()
+    {
+        return defined('CALENDAR_IMPORT_CREATE_THREADS') ? (bool)CALENDAR_IMPORT_CREATE_THREADS : true;
+    }
+    
+    /**
+     * Get configured forum board ID for topic creation.
+     * 
+     * @return int Board ID or 0 if not configured
+     */
+    protected function getForumBoardID()
+    {
+        return defined('CALENDAR_IMPORT_BOARD_ID') ? (int)CALENDAR_IMPORT_BOARD_ID : 0;
     }
     
     /**

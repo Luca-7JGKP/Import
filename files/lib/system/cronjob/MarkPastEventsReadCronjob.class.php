@@ -27,6 +27,7 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
     /**
      * Execute cronjob to mark past events as read.
      * Uses batch operations for performance with parameterized queries.
+     * Enhanced with detailed logging for debugging read/unread status.
      * 
      * @param Cronjob $cronjob Cronjob instance
      */
@@ -47,9 +48,14 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
             return;
         }
         
+        $this->log('info', 'Starting to mark past events as read', [
+            'objectTypeID' => $objectTypeID,
+            'currentTime' => date('Y-m-d H:i:s', TIME_NOW)
+        ]);
+        
         // Hole alle abgelaufenen Events die noch nicht für alle als gelesen markiert sind
         // Uses parameterized query for SQL injection protection
-        $sql = "SELECT DISTINCT e.eventID, ed.startTime
+        $sql = "SELECT DISTINCT e.eventID, ed.startTime, e.subject
                 FROM calendar1_event e
                 JOIN calendar1_event_date ed ON e.eventID = ed.eventID
                 WHERE ed.startTime < ?
@@ -61,8 +67,13 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
         $statement->execute([TIME_NOW, TIME_NOW - (30 * 86400)]);
         
         $pastEventIDs = [];
+        $eventDetails = [];
         while ($row = $statement->fetchArray()) {
             $pastEventIDs[] = $row['eventID'];
+            $eventDetails[$row['eventID']] = [
+                'subject' => $row['subject'],
+                'startTime' => $row['startTime']
+            ];
         }
         
         if (empty($pastEventIDs)) {
@@ -70,7 +81,11 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
             return;
         }
         
-        $this->log('info', 'Found ' . count($pastEventIDs) . ' past events to mark as read');
+        $this->log('info', 'Found past events to mark as read', [
+            'count' => count($pastEventIDs),
+            'oldestEvent' => date('Y-m-d H:i:s', min(array_column($eventDetails, 'startTime'))),
+            'newestEvent' => date('Y-m-d H:i:s', max(array_column($eventDetails, 'startTime')))
+        ]);
         
         // Hole alle aktiven Benutzer (parameterized query)
         $sql = "SELECT userID FROM wcf".WCF_N."_user WHERE banned = 0 AND activationCode = 0";
@@ -86,6 +101,10 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
             $this->log('warning', 'No active users found');
             return;
         }
+        
+        $this->log('debug', 'Processing read status for users', [
+            'userCount' => count($userIDs)
+        ]);
         
         // Markiere alle abgelaufenen Events als gelesen für alle Benutzer
         // Verwende Batch-INSERT für bessere Performance
@@ -118,7 +137,12 @@ class MarkPastEventsReadCronjob extends AbstractCronjob
             $totalInserted += $inserted;
         }
         
-        $this->log('info', "Marked {$totalInserted} event-user combinations as read");
+        $this->log('info', 'Completed marking past events as read', [
+            'eventCount' => count($pastEventIDs),
+            'userCount' => count($userIDs),
+            'totalInserted' => $totalInserted,
+            'timestamp' => date('Y-m-d H:i:s', TIME_NOW)
+        ]);
     }
     
     /**
